@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -74,7 +75,15 @@ CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score);`); err != nil {
 			return err
 		}
 	}
-	return nil
+	_, err := s.db.Exec(`
+CREATE TABLE IF NOT EXISTS activity (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	kind TEXT NOT NULL,
+	detail TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_at ON activity(at);`)
+	return err
 }
 
 // ensureColumn adds col with decl to table if it doesn't already exist.
@@ -277,11 +286,15 @@ func scanJob(rows *sql.Rows) (Job, error) {
 	var j Job
 	var remote, vetoed int
 	var score sql.NullInt64
-	if err := rows.Scan(&j.Source, &j.ID, &j.URL, &j.Title, &j.Company, &j.Location, &remote, &j.Type, &j.Deadline, &j.Salary, &j.Description, &j.Raw, &score, &vetoed); err != nil {
+	var salary, description, raw sql.NullString
+	if err := rows.Scan(&j.Source, &j.ID, &j.URL, &j.Title, &j.Company, &j.Location, &remote, &j.Type, &j.Deadline, &salary, &description, &raw, &score, &vetoed); err != nil {
 		return j, err
 	}
 	j.Remote = remote == 1
 	j.Vetoed = vetoed == 1
+	j.Salary = salary.String
+	j.Description = description.String
+	j.Raw = raw.String
 	if score.Valid {
 		j.Score = int(score.Int64)
 	} else {
@@ -340,4 +353,49 @@ func (s *Store) markNotified(jobs []Job) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// activity is one entry in the persistent activity log.
+type activity struct {
+	At     time.Time
+	Kind   string
+	Detail string
+}
+
+// addActivity records an activity and prunes entries older than 7 days.
+func (s *Store) addActivity(kind, detail string) error {
+	if _, err := s.db.Exec(`INSERT INTO activity (kind, detail) VALUES (?, ?)`, kind, detail); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`DELETE FROM activity WHERE at < datetime('now', '-7 days')`)
+	return err
+}
+
+// recentActivity returns the last n activities, newest first.
+func (s *Store) recentActivity(n int) ([]activity, error) {
+	rows, err := s.db.Query(`SELECT at, kind, detail FROM activity ORDER BY id DESC LIMIT ?`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []activity
+	for rows.Next() {
+		var a activity
+		if err := rows.Scan(&a.At, &a.Kind, &a.Detail); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// persistActivity records an activity from anywhere (CLI/TUI), opening the
+// store lazily.
+func persistActivity(kind, detail string) {
+	store, err := openStore()
+	if err != nil {
+		return
+	}
+	defer store.close()
+	_ = store.addActivity(kind, detail)
 }

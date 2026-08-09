@@ -42,6 +42,7 @@ const (
 
 type logEntry struct {
 	at   time.Time
+	kind string
 	text string
 }
 
@@ -83,6 +84,7 @@ type jobsLoadedMsg struct {
 }
 
 type collectDoneMsg struct {
+	kind   string // "collect", "notify", "erro"
 	n      int
 	err    error
 	notice string
@@ -125,6 +127,11 @@ type detailLoadedMsg struct {
 	err                             error
 }
 
+// activityLogMsg carries the persisted activity history loaded from the DB.
+type activityLogMsg struct {
+	entries []logEntry
+}
+
 func newModel() model {
 	profiles := profileNames()
 	idx := 0
@@ -160,6 +167,25 @@ func (m model) loadJobs() tea.Msg {
 	return jobsLoadedMsg{jobs}
 }
 
+// loadActivityLog loads the persisted activity history (up to 7 days) from
+// the DB when the log view opens.
+func (m model) loadActivityLog() tea.Msg {
+	store, err := openStore()
+	if err != nil {
+		return activityLogMsg{}
+	}
+	defer store.close()
+	acts, err := store.recentActivity(maxLog)
+	if err != nil {
+		return activityLogMsg{}
+	}
+	entries := make([]logEntry, len(acts))
+	for i, a := range acts {
+		entries[i] = logEntry{at: a.At, kind: a.Kind, text: a.Detail}
+	}
+	return activityLogMsg{entries: entries}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -181,10 +207,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.collectLines = nil
 		m.collectCh = nil
 		if msg.err != nil {
-			m = m.appendLog("erro: " + msg.err.Error())
+			m = m.appendLog("erro", "erro: "+msg.err.Error())
 			return m.setStatus("erro: "+msg.err.Error(), false)
 		}
-		m = m.appendLog(msg.notice)
+		m = m.appendLog(msg.kind, msg.notice)
 		nm, sc := m.setStatus(msg.notice, true)
 		return nm, tea.Batch(sc, nm.loadJobs)
 
@@ -205,7 +231,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case vetoDoneMsg:
 		if msg.err != nil {
-			m = m.appendLog("erro: " + msg.err.Error())
+			m = m.appendLog("erro", "erro: "+msg.err.Error())
 			return m.setStatus("erro: "+msg.err.Error(), false)
 		}
 		for i := range m.all {
@@ -219,17 +245,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.vetoed {
 			verb = "desvetada"
 		}
-		m = m.appendLog(verb + ": " + msg.title)
+		m = m.appendLog("veto", verb+": "+msg.title)
 		return m.setStatus(verb+": "+msg.title, true)
 
 	case profileAppliedMsg:
 		if msg.err != nil {
-			m = m.appendLog("erro: " + msg.err.Error())
+			m = m.appendLog("erro", "erro: "+msg.err.Error())
 			return m.setStatus("erro: "+msg.err.Error(), false)
 		}
 		m.profile = msg.name
 		m.sidebar = false
-		m = m.appendLog("perfil: " + msg.name)
+		m = m.appendLog("profile", "perfil: "+msg.name)
 		nm, sc := m.setStatus("perfil: "+msg.name+" · re-scoreado", true)
 		return nm, tea.Batch(sc, nm.loadJobs)
 
@@ -277,6 +303,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.setStatus("descrição carregada", true)
 
+	case activityLogMsg:
+		m.log = msg.entries
+		return m, nil
+
 	case tea.KeyMsg:
 		nm, cmd := m.handleKey(msg)
 		nm2, fetchCmd := nm.(model).maybeFetchDetail()
@@ -288,9 +318,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// appendLog records an activity entry, keeping at most maxLog.
-func (m model) appendLog(text string) model {
-	m.log = append(m.log, logEntry{at: time.Now(), text: text})
+// appendLog records an activity persistently (7-day window in the DB) and in
+// memory (capped at maxLog for the current session).
+func (m model) appendLog(kind, text string) model {
+	persistActivity(kind, text)
+	m.log = append(m.log, logEntry{at: time.Now(), kind: kind, text: text})
 	if len(m.log) > maxLog {
 		m.log = m.log[len(m.log)-maxLog:]
 	}
@@ -335,6 +367,7 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "L":
 		m.mode = modeLogs
+		return m, m.loadActivityLog
 	case "/":
 		m.mode = modeFilter
 		m.filterCur = len(m.filter)
@@ -396,6 +429,7 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 	case "enter":
 		if j, ok := m.focusedJob(); ok {
+			m = m.appendLog("open", j.Title)
 			return m, openURL(j.URL)
 		}
 	case "c":
@@ -481,13 +515,13 @@ func (m model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if err := store.applyScores(jobs); err != nil {
 			return m.setStatus("erro: "+err.Error(), false)
 		}
-		m = m.appendLog("scores LLM aplicados")
+		m = m.appendLog("llm", "scores LLM aplicados")
 		nm, sc := m.setStatus("scores LLM aplicados", true)
 		return nm, tea.Batch(sc, nm.loadJobs)
 	case "n", "N", "esc", "q":
 		m.mode = modeList
 		m.llmJobs = nil
-		m = m.appendLog("scores LLM mantidos em cache")
+		m = m.appendLog("llm", "scores LLM mantidos em cache")
 		return m.setStatus("scores LLM mantidos em cache (score atual intacto)", true)
 	}
 	return m, nil
@@ -723,9 +757,9 @@ func (m model) collectDriver() tea.Msg {
 			} else {
 				notice += " · rank falhou"
 			}
-			return collectDoneMsg{n: n, notice: notice}
+			return collectDoneMsg{kind: "collect", n: n, notice: notice}
 		case strings.HasPrefix(line, "ERR:"):
-			return collectDoneMsg{err: errors.New(strings.TrimPrefix(line, "ERR:"))}
+			return collectDoneMsg{kind: "erro", err: errors.New(strings.TrimPrefix(line, "ERR:"))}
 		default:
 			return collectProgressMsg{line: line}
 		}
@@ -788,10 +822,10 @@ func (m model) runNotify() tea.Msg {
 		jobs = m.jobs[:n]
 	}
 	if len(jobs) == 0 {
-		return collectDoneMsg{notice: "notify: nada a notificar"}
+		return collectDoneMsg{kind: "notify", notice: "notify: nada a notificar"}
 	}
 	notifyJobs(jobs)
-	return collectDoneMsg{n: len(jobs), notice: fmt.Sprintf("notify: %d vagas enviadas", len(jobs))}
+	return collectDoneMsg{kind: "notify", n: len(jobs), notice: fmt.Sprintf("notify: %d vagas enviadas", len(jobs))}
 }
 
 func openURL(url string) tea.Cmd {
@@ -1051,10 +1085,31 @@ func (m model) renderLogs(availH, w int) string {
 	var sb strings.Builder
 	for i := len(m.log) - 1; i >= 0; i-- {
 		e := m.log[i]
-		sb.WriteString(fmt.Sprintf(" %s  %s\n", e.at.Format("02/01 15:04"), e.text))
+		sb.WriteString(fmt.Sprintf(" %s  %s %s\n", e.at.Format("02/01 15:04"), activityBadge(e.kind), e.text))
 	}
 	content := wrapText(strings.TrimRight(sb.String(), "\n"), inner)
 	return m.renderInPanel(content, availH, w)
+}
+
+// activityBadge renders a small colored tag for an activity kind.
+func activityBadge(kind string) string {
+	s := "[" + kind + "]"
+	switch kind {
+	case "collect":
+		return successStyle().Render(s)
+	case "notify":
+		return infoStyle().Render(s)
+	case "veto":
+		return warningStyle().Render(s)
+	case "llm":
+		return titleStyle().Render(s)
+	case "open":
+		return dimStyle().Render(s)
+	case "erro":
+		return errorStyle().Render(s)
+	default:
+		return mutedStyle().Render(s)
+	}
 }
 
 func (m model) detailWidth(w int) int {

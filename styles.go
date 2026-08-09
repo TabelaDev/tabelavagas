@@ -16,6 +16,7 @@ func mutedStyle() lipgloss.Style   { return theme.Muted() }
 func successStyle() lipgloss.Style { return theme.Success() }
 func warningStyle() lipgloss.Style { return theme.Warning() }
 func errorStyle() lipgloss.Style   { return theme.Error() }
+func infoStyle() lipgloss.Style    { return theme.Info() }
 
 // cardTitleStyle is the job title in an unselected card: bold, plain text
 // (no accent), so the colored score badge stays the only pop.

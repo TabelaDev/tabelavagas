@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -174,6 +175,53 @@ func TestSetVetoed_ExcludesFromTop(t *testing.T) {
 	top, _ = s.top(10)
 	if len(top) != 2 {
 		t.Fatalf("top after unveto = %d jobs, want 2", len(top))
+	}
+}
+
+func TestActivityLog(t *testing.T) {
+	s := newTestStore(t)
+	for i := 0; i < 5; i++ {
+		if err := s.addActivity("collect", fmt.Sprintf("run %d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	acts, err := s.recentActivity(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(acts) != 5 {
+		t.Fatalf("recentActivity = %d, want 5", len(acts))
+	}
+	// Newest first.
+	if acts[0].Detail != "run 4" {
+		t.Errorf("first = %q, want run 4", acts[0].Detail)
+	}
+	// Limit works.
+	acts, _ = s.recentActivity(2)
+	if len(acts) != 2 || acts[0].Detail != "run 4" {
+		t.Errorf("recentActivity(2) = %+v", acts)
+	}
+}
+
+func TestActivityPrune(t *testing.T) {
+	s := newTestStore(t)
+	// Insert one entry, then backdate it beyond the 7-day window.
+	if err := s.addActivity("open", "antiga"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE activity SET at = datetime('now', '-8 days')`); err != nil {
+		t.Fatal(err)
+	}
+	// A new insert triggers the prune.
+	if err := s.addActivity("open", "nova"); err != nil {
+		t.Fatal(err)
+	}
+	acts, err := s.recentActivity(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(acts) != 1 || acts[0].Detail != "nova" {
+		t.Fatalf("after prune = %+v, want only nova", acts)
 	}
 }
 

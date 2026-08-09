@@ -42,7 +42,7 @@ A vaga focada fica com destaque full-width na cor de acento.
 | `V`        | mostrar/esconder as vagas vetadas           |
 | `t`        | visão de faixas: colunas 80-100 · 60-79 · <60 |
 | `ctrl+e`   | abre/fecha sidebar de perfis (aplica e re-scoreia) |
-| `L`        | log de atividade (collect/veto/notify/perfil) |
+| `L`        | log de atividade (collect/veto/notify/perfil) — últimos 7 dias |
 | `enter`    | abre a vaga no navegador                    |
 | `c`        | coleta com spinner + progresso por fonte e re-scoreia |
 | `n`        | notifica as top 5 via DMS                    |

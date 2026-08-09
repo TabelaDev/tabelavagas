@@ -108,6 +108,7 @@ func main() {
 			fatal(err)
 		}
 		fmt.Fprintf(stdout(), "collect: %d novas vagas gravadas\n", n)
+		persistActivity("collect", fmt.Sprintf("%d novas vagas", n))
 	case "rank":
 		if err := runRank(f); err != nil {
 			fatal(err)
@@ -125,12 +126,14 @@ func main() {
 			fatal(err)
 		}
 		notifyJobs(jobs)
+		persistActivity("notify", fmt.Sprintf("%d vagas", len(jobs)))
 	case "all":
 		n, err := runCollect()
 		if err != nil {
 			fatal(err)
 		}
 		fmt.Fprintf(stdout(), "collect: %d novas vagas gravadas\n", n)
+		persistActivity("collect", fmt.Sprintf("%d novas vagas", n))
 		if err := runRank(f); err != nil {
 			fatal(err)
 		}
@@ -140,6 +143,7 @@ func main() {
 		}
 		printJobs(jobs)
 		notifyJobs(jobs)
+		persistActivity("notify", fmt.Sprintf("%d vagas", len(jobs)))
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
@@ -228,6 +232,7 @@ func runRank(f cmdFlags) error {
 		if err := store.applyScores(jobs); err != nil {
 			return err
 		}
+		persistActivity("llm", fmt.Sprintf("scores LLM aplicados em %d vagas", len(jobs)))
 		fmt.Fprintf(stdout(), "rank: %d vagas re-scoreadas com LLM\n", len(jobs))
 		return nil
 	}

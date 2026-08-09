@@ -8,9 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Log de atividade persistente (tabela `activity`): collect, notify, veto,
+  open, llm, profile — mantém os últimos 7 dias (prune automático) e a visão
+  `L` carrega do DB (sobrevive a reinício). Badges coloridos por tipo.
 - Fonte `greenhouse` (boards-api.greenhouse.io, API pública sem auth) com
   lista de empresas configurável em `~/.config/tabelavagas/sources.toml`
 - Removida a fonte `gupy` (token inviável sem plano Premium/Enterprise)
+
+### Fixed
+- TUI não carregava vagas em DBs com colunas `salary`/`description` NULL
+  (adicionadas via ALTER TABLE): `scanJob` agora aceita NULL nessas colunas
 - TUI elaborada: cards de 3 linhas (score+título, empresa/local/tipo, tags+
   deadline), painel de detalhes (`o`), filtro live (`/` com tokens `remote`,
   `score:NN`, `src:NOME`, `tipo:...` e busca por palavra), destaque da vaga
