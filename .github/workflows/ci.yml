@@ -9,18 +9,15 @@ on:
 jobs:
   secrets-scan:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Gitleaks (scan histórico e working tree)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run --rm -v "${PWD}":/repo -w /repo \
+            zricethezav/gitleaks:latest git --no-banner --exit-code=1
 
   lint-and-test:
     runs-on: ubuntu-latest
