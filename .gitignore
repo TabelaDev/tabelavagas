@@ -1,0 +1,9 @@
+# binary
+/tabelavagas
+*.exe
+
+# local state
+*.db
+*.db-wal
+*.db-shm
+vagas.json

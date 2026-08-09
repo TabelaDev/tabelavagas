@@ -1,0 +1,58 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+// notifyJobs sends the top-ranked jobs to the desktop via DMS notification.
+// When DMS is not available, it prints to stdout (dry-run).
+func notifyJobs(jobs []Job) {
+	if len(jobs) == 0 {
+		fmt.Fprintln(stdout(), "notify: sem vagas novas de alto score")
+		return
+	}
+
+	// Check if dms is available
+	if _, err := exec.LookPath("dms"); err != nil {
+		// Fallback: print to stdout
+		fmt.Fprintln(stdout(), "=== notify (dry-run: dms não encontrado) ===")
+		for _, j := range jobs {
+			fmt.Fprintf(stdout(), "[%02d] %s — %s %s\n%s\n\n", j.Score, j.Title, j.Company, j.Location, j.URL)
+		}
+		return
+	}
+
+	// Build notification body
+	var lines []string
+	for _, j := range jobs {
+		loc := j.Location
+		if loc == "" {
+			loc = "—"
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s\n   %s · %s\n   %s", j.Score, j.Title, j.Company, loc, j.URL))
+	}
+
+	summary := fmt.Sprintf("tabelavagas — %d vagas que valem a pena", len(jobs))
+	body := strings.Join(lines, "\n\n")
+
+	// Send via dms notify
+	cmd := exec.Command("dms", "notify", summary, body,
+		"--app", "tabelavagas",
+		"--timeout", "8000",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "aviso: dms notify falhou: %v\n", err)
+		// Fallback to stdout
+		fmt.Fprintln(stdout(), "=== notify (fallback) ===")
+		for _, j := range jobs {
+			fmt.Fprintf(stdout(), "[%02d] %s — %s %s\n%s\n\n", j.Score, j.Title, j.Company, j.Location, j.URL)
+		}
+		return
+	}
+	fmt.Fprintf(stdout(), "notify: %d vagas enviadas via DMS\n", len(jobs))
+}
