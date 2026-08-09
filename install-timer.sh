@@ -3,7 +3,7 @@ set -euo pipefail
 
 # install-timer.sh — instala systemd user timer pra rodar tabelavagas all
 # todo dia às 21:00. Persistent=true garante catch-up se a máquina estiver
-# desligada no horário.
+# desligada. --only-new evita re-notificar vagas já avisadas.
 
 JOB_NAME="tabelavagas"
 TIMER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
@@ -32,7 +32,7 @@ Description=tabelavagas daily collect + rank + notify
 
 [Service]
 Type=oneshot
-ExecStart=$(which tabelavagas) all
+ExecStart=$(which tabelavagas) all --only-new
 StandardOutput=append:${LOG_FILE}
 StandardError=append:${LOG_FILE}
 EOF

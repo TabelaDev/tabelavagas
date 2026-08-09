@@ -19,9 +19,10 @@ Flags comuns:
 
 | Flag          | Descrição                                       | Default |
 | ------------- | ----------------------------------------------- | ------- |
-| `--min N`     | score mínimo (override do perfil)               | —       |
+| `--min N`     | cutoff de score (override do `min_score`, no scoring) | —  |
 | `--profile X` | perfil de scoring (`dev`, `data`, `fullstack`)  | `dev`   |
 | `--scorer X`  | `heuristic` ou `llm`                            | —       |
+| `--only-new`  | só vagas ainda não notificadas (`top`/`notify`/`all`) | —    |
 | `--dry`       | mostra o que faria sem gravar                   | —       |
 
 ## Fontes: API vs scraping
@@ -108,7 +109,9 @@ Env LLM:
 ## Timer diário
 
 O script `install-timer.sh` instala um systemd user timer que roda
-`tabelavagas all` todo dia às 21:00 (com heurística, sem custo LLM).
+`tabelavagas all --only-new` todo dia às 21:00 (com heurística, sem custo
+LLM). `--only-new` faz só as vagas ainda não notificadas virarem aviso — as
+já enviadas ficam marcadas no DB e não re-notificam.
 `Persistent=true` garante catch-up se a máquina estiver desligada.
 
 ```bash

@@ -21,7 +21,10 @@ func defaultDBPath() string {
 }
 
 func openStore() (*Store, error) {
-	path := defaultDBPath()
+	return openStoreAt(defaultDBPath())
+}
+
+func openStoreAt(path string) (*Store, error) {
 	os.MkdirAll(filepath.Dir(path), 0o755)
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -105,8 +108,18 @@ func (s *Store) close() { s.db.Close() }
 
 // top returns up to n jobs with the highest score (already scored).
 func (s *Store) top(n int) ([]Job, error) {
+	return s.topWhere(n, "")
+}
+
+// topUnnotified returns up to n jobs with the highest score that have not
+// been notified yet.
+func (s *Store) topUnnotified(n int) ([]Job, error) {
+	return s.topWhere(n, "AND notified = 0")
+}
+
+func (s *Store) topWhere(n int, extra string) ([]Job, error) {
 	rows, err := s.db.Query(`SELECT source, id, url, title, company, location, remote, type, deadline, raw, score
-		FROM jobs WHERE score IS NOT NULL ORDER BY score DESC LIMIT ?`, n)
+		FROM jobs WHERE score IS NOT NULL `+extra+` ORDER BY score DESC LIMIT ?`, n)
 	if err != nil {
 		return nil, err
 	}
@@ -199,4 +212,28 @@ func (s *Store) llmCachedScore(source, id string) (float64, string, bool) {
 func (s *Store) setLLMScore(source, id string, score float64, hash string) error {
 	_, err := s.db.Exec(`UPDATE jobs SET llm_score = ?, llm_hash = ? WHERE source = ? AND id = ?`, score, hash, source, id)
 	return err
+}
+
+// markNotified marks the given jobs as already notified so they are not
+// picked up again by --only-new.
+func (s *Store) markNotified(jobs []Job) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(`UPDATE jobs SET notified = 1 WHERE source = ? AND id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, j := range jobs {
+		if _, err := stmt.Exec(j.Source, j.ID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

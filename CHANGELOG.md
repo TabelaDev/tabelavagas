@@ -14,5 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `gupy` (API oficial com Bearer token via env)
   - `programathor` / `trampos` (best-effort scraping; hoje SPAs)
 - Score heurístico 0-100 configurável por perfil (`score.go`)
+- Perfis custom via `~/.config/tabelavagas/profiles.toml` (sobrescrevem built-ins)
 - Store SQLite com dedup por `(source, id)`
+- Rastreio de notificação: vagas enviadas ficam marcadas; `--only-new` só mostra as novas
 - Notificação via DMS (desktop notification) com fallback para stdout sem `dms`

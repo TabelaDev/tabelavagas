@@ -20,9 +20,10 @@ Uso:
   tabelavagas all [flags]      collect → rank → top → notify
 
 Flags comuns:
-  --min N         score mínimo (default: do perfil)
+  --min N         cutoff de score (override do min_score do perfil, no scoring)
   --profile NAME  perfil de scoring (default: dev)
   --scorer TYPE   heuristic | llm (default: heuristic)
+  --only-new      só vagas ainda não notificadas (top/notify/all)
   --dry           mostra o que faria sem gravar
 
 Perfis built-in: dev, data, fullstack.
@@ -44,10 +45,11 @@ type cmdFlags struct {
 	scorer  string
 	dry     bool
 	topN    int
+	onlyNew bool
 }
 
 func parseFlags(args []string) cmdFlags {
-	f := cmdFlags{profile: "dev", min: 0, scorer: "heuristic", dry: false, topN: 10}
+	f := cmdFlags{profile: defaultProfile(), min: 0, scorer: "heuristic", dry: false, topN: 10, onlyNew: false}
 	i := 0
 	for i < len(args) {
 		switch args[i] {
@@ -68,6 +70,8 @@ func parseFlags(args []string) cmdFlags {
 			if i < len(args) {
 				f.scorer = args[i]
 			}
+		case "--only-new":
+			f.onlyNew = true
 		case "--dry":
 			f.dry = true
 		default:
@@ -78,10 +82,6 @@ func parseFlags(args []string) cmdFlags {
 			}
 		}
 		i++
-	}
-	// env override for profile
-	if p := os.Getenv("TABELAVAGAS_PROFILE"); p != "" && f.profile == "dev" {
-		f.profile = p
 	}
 	return f
 }
@@ -157,10 +157,7 @@ func fatal(err error) {
 
 // buildScorer constructs a Scorer from the profile name and flags.
 func buildScorer(f cmdFlags, store *Store) Scorer {
-	profile := builtinProfiles[f.profile]
-	if profile.Preferred == nil {
-		profile = builtinProfiles["dev"]
-	}
+	profile := resolveProfile(f.profile)
 	if f.min > 0 {
 		profile.MinScore = f.min
 	}
@@ -224,7 +221,8 @@ func runTop(f cmdFlags) ([]Job, error) {
 	if n <= 0 {
 		n = 10
 	}
+	if f.onlyNew {
+		return store.topUnnotified(n)
+	}
 	return store.top(n)
 }
-
-

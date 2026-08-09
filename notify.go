@@ -54,5 +54,20 @@ func notifyJobs(jobs []Job) {
 		}
 		return
 	}
+	// Only mark as notified when actually delivered via DMS, so --only-new
+	// keeps the ones that were skipped.
+	markJobsNotified(jobs)
 	fmt.Fprintf(stdout(), "notify: %d vagas enviadas via DMS\n", len(jobs))
+}
+
+// markJobsNotified flags the delivered jobs so future --only-new runs skip them.
+func markJobsNotified(jobs []Job) {
+	store, err := openStore()
+	if err != nil {
+		return
+	}
+	defer store.close()
+	if err := store.markNotified(jobs); err != nil {
+		fmt.Fprintf(os.Stderr, "aviso: falha ao marcar vagas notificadas: %v\n", err)
+	}
 }

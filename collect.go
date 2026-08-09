@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,8 +139,8 @@ func (g *gupyCollector) fetchPage(page int, token string) ([]Job, bool, error) {
 		return nil, false, fmt.Errorf("http %d: %s", resp.StatusCode, truncate(string(b), 200))
 	}
 	var payload struct {
-		Results     []gupyJob `json:"results"`
-		TotalPages  int       `json:"totalPages"`
+		Results      []gupyJob `json:"results"`
+		TotalPages   int       `json:"totalPages"`
 		TotalResults int       `json:"totalResults"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -197,7 +196,3 @@ func (g *gupyCollector) jobFrom(d gupyJob) Job {
 		Raw:      raw,
 	}
 }
-
-var _ = bytes.TrimSpace
-var _ = errors.New
-var _ = url.Parse

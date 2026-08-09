@@ -10,7 +10,7 @@ func footerStyle(width int) lipgloss.Style { return theme.Footer(width) }
 func panelStyle(focused bool) lipgloss.Style {
 	return theme.Panel(focused)
 }
-func dimStyle() lipgloss.Style { return theme.Dim() }
+func dimStyle() lipgloss.Style     { return theme.Dim() }
 func successStyle() lipgloss.Style { return theme.Success() }
 func warningStyle() lipgloss.Style { return theme.Warning() }
 

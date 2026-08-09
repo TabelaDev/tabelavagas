@@ -44,7 +44,7 @@ type collectDoneMsg struct {
 
 func newModel() model {
 	return model{
-		profile: "dev",
+		profile: defaultProfile(),
 	}
 }
 
