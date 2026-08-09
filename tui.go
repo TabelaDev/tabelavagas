@@ -18,7 +18,7 @@ const (
 	gapLines      = 1
 	footerLines   = 1
 	noticeLines   = 1
-	cardH         = 3
+	cardH         = 4
 	detailMin     = 32
 	detailMax     = 64
 	sidebarW      = 22
@@ -1220,12 +1220,14 @@ func (m model) renderCardJob(j Job, sel bool, w int) string {
 			s.Render(padLines(line1, w)),
 			s.Render(padLines(line2, w)),
 			s.Render(padLines(line3, w)),
+			"", // gap between cards, not highlighted
 		)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		padLines(line1, w),
 		dimStyle().Render(padLines(line2, w)),
 		mutedStyle().Render(padLines(line3, w)),
+		"", // gap between cards
 	)
 }
 
