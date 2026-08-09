@@ -1337,7 +1337,7 @@ func (m model) renderFooter(w int) string {
 		parts = append(parts, "faixas")
 	}
 	left := " " + strings.Join(parts, " · ")
-	hints := "/filtro · o detalhe · t faixas · ctrl+e perfil · x vetar · m llm · c coleta · q"
+	hints := "/filtro · o detalhe · t faixas · ctrl+e perfil · x vetar · m llm · c coleta · q sai"
 
 	text := left
 	if l, h := len([]rune(left)), len([]rune(hints)); l+h+2 <= inner {
@@ -1345,7 +1345,36 @@ func (m model) renderFooter(w int) string {
 	} else if l+2 > inner {
 		text = truncate(left, inner-1) + "…"
 	} else {
-		text = left + " " + truncate(hints, inner-l-3) + "…"
+		// Truncate at a whole-token boundary so a key never shows without its
+		// label (e.g. "… q" instead of "… q sai").
+		text = left + " " + fitHints(hints, inner-l-3)
 	}
 	return text
+}
+
+// fitHints drops trailing " · " tokens until the string fits width, then
+// appends an ellipsis. Only whole tokens are dropped.
+func fitHints(hints string, width int) string {
+	if width < 1 {
+		return "…"
+	}
+	if len([]rune(hints)) <= width {
+		return hints
+	}
+	toks := strings.Split(hints, " · ")
+	out := ""
+	for i, tok := range toks {
+		cand := tok
+		if i > 0 {
+			cand = out + " · " + tok
+		}
+		if len([]rune(cand)) > width-1 {
+			break
+		}
+		out = cand
+	}
+	if out == "" {
+		return "…"
+	}
+	return out + "…"
 }
