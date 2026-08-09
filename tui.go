@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ianptkcs/tabelatuiui"
 )
 
 const (
@@ -77,6 +79,10 @@ type model struct {
 	llmJobs       []Job
 	confirmText   string
 	detailLoading string // "source:id" of the job whose detail is being fetched
+
+	// helpModal is the "?" overlay listing every keybinding — declared here
+	// (not per-update) so its scroll position survives toggles.
+	helpModal *tuiui.HelpModal
 }
 
 type jobsLoadedMsg struct {
@@ -145,6 +151,20 @@ func newModel() model {
 		profile:    defaultProfile(),
 		profiles:   profiles,
 		sidebarIdx: idx,
+		helpModal: tuiui.NewHelpModal(
+			tuiui.HelpSection{
+				Title:    "Navegação",
+				Bindings: []tuiui.Binding{keyMoveDown, keyMoveUp, keyMoveLeft, keyMoveRight, keyTop, keyBottom, keyPageUp, keyPageDown, keyOpen},
+			},
+			tuiui.HelpSection{
+				Title:    "Ações",
+				Bindings: []tuiui.Binding{keyFilter, keyDetail, keyTiers, keySidebar, keyVeto, keyShowVeto, keyCollect, keyNotify, keyLLM, keyLogs, keyRefresh},
+			},
+			tuiui.HelpSection{
+				Title:    "Sessão",
+				Bindings: []tuiui.Binding{keyHelp, keyQuit},
+			},
+		),
 	}
 }
 
@@ -191,6 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.helpModal.SetSize(msg.Width, msg.Height)
 		return m, nil
 
 	case jobsLoadedMsg:
@@ -308,6 +329,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// The help modal swallows all keys while it's open — the app must
+		// not act on them (so "q" closes the modal instead of quitting).
+		if m.helpModal.Update(msg) {
+			return m, nil
+		}
 		nm, cmd := m.handleKey(msg)
 		nm2, fetchCmd := nm.(model).maybeFetchDetail()
 		if fetchCmd != nil {
@@ -350,12 +376,15 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
+	switch {
+	case key.Matches(msg, keyQuit):
 		return m, tea.Quit
-	case "ctrl+e":
+	case key.Matches(msg, keyHelp):
+		m.helpModal.Toggle()
+		return m, nil
+	case key.Matches(msg, keySidebar):
 		m.sidebar = true
-	case "t":
+	case key.Matches(msg, keyTiers):
 		m.tierView = !m.tierView
 		if m.tierView {
 			m.clampTierCursor()
@@ -365,54 +394,54 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 			}
 		}
-	case "L":
+	case key.Matches(msg, keyLogs):
 		m.mode = modeLogs
 		return m, m.loadActivityLog
-	case "/":
+	case key.Matches(msg, keyFilter):
 		m.mode = modeFilter
 		m.filterCur = len(m.filter)
-	case "o":
+	case key.Matches(msg, keyDetail):
 		if !m.tierView {
 			m.showDetail = !m.showDetail
 		}
-	case "x":
+	case key.Matches(msg, keyVeto):
 		if j, ok := m.focusedJob(); ok {
 			return m, func() tea.Msg { return m.runVetoToggle(j) }
 		}
-	case "V":
+	case key.Matches(msg, keyShowVeto):
 		m.showVetoed = !m.showVetoed
 		m.applyFilter()
 		if m.showVetoed {
 			return m.setStatus("mostrando vagas vetadas", true)
 		}
 		return m.setStatus("escondendo vagas vetadas", true)
-	case "j", "down":
+	case key.Matches(msg, keyMoveDown):
 		if m.tierView {
 			m.cursor++
 			m.clampTierCursor()
 		} else if m.cursor < m.total-1 {
 			m.cursor++
 		}
-	case "k", "up":
+	case key.Matches(msg, keyMoveUp):
 		if m.tierView {
 			m.cursor--
 			m.clampTierCursor()
 		} else if m.cursor > 0 {
 			m.cursor--
 		}
-	case "h", "left":
+	case key.Matches(msg, keyMoveLeft):
 		if m.tierView && m.colIdx > 0 {
 			m.colIdx--
 			m.clampTierCursor()
 		}
-	case "l", "right":
+	case key.Matches(msg, keyMoveRight):
 		if m.tierView && m.colIdx < 2 {
 			m.colIdx++
 			m.clampTierCursor()
 		}
-	case "g", "home":
+	case key.Matches(msg, keyTop):
 		m.cursor = 0
-	case "G", "end":
+	case key.Matches(msg, keyBottom):
 		if m.tierView {
 			b := m.tierGroups()
 			if m.colIdx < len(b) && len(b[m.colIdx].jobs) > 0 {
@@ -421,18 +450,18 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.total > 0 {
 			m.cursor = m.total - 1
 		}
-	case "pgup":
+	case key.Matches(msg, keyPageUp):
 		m.cursor -= 10
 		m.clampCursor()
-	case "pgdown":
+	case key.Matches(msg, keyPageDown):
 		m.cursor += 10
 		m.clampCursor()
-	case "enter":
+	case key.Matches(msg, keyOpen):
 		if j, ok := m.focusedJob(); ok {
 			m = m.appendLog("open", j.Title)
 			return m, openURL(j.URL)
 		}
-	case "c":
+	case key.Matches(msg, keyCollect):
 		m.mode = modeCollecting
 		m.spinner = 0
 		m.collectLines = nil
@@ -440,14 +469,14 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.collectCh = make(chan string, 16)
 		go m.collectStream()
 		return m, m.collectDriver
-	case "r":
+	case key.Matches(msg, keyRefresh):
 		nm, c := m.setStatus("recarregado", true)
 		return nm, tea.Batch(c, m.loadJobs)
-	case "n":
+	case key.Matches(msg, keyNotify):
 		if _, ok := m.focusedJob(); ok {
 			return m, m.runNotify
 		}
-	case "m":
+	case key.Matches(msg, keyLLM):
 		if os.Getenv("TABELAVAGAS_LLM_API_KEY") == "" {
 			return m.setStatus("chave LLM não definida (TABELAVAGAS_LLM_API_KEY)", false)
 		}
@@ -466,6 +495,9 @@ func (m model) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "?":
+		m.helpModal.Toggle()
+		return m, nil
 	case "ctrl+e", "esc", "l", "right":
 		m.sidebar = false
 	case "j", "down":
@@ -841,7 +873,7 @@ func (m model) View() string {
 		return "carregando..."
 	}
 	w := m.width
-	header := headerStyle(w).Render("tabelavagas")
+	header := theme.Header(w).Render("tabelavagas")
 
 	availH := m.height - headerLines - gapLines - footerLines - noticeLines
 	if availH < 1 {
@@ -865,14 +897,21 @@ func (m model) View() string {
 	}
 
 	notice := m.renderNotice(w)
-	footer := footerStyle(w).Render(m.renderFooter(w))
-	return lipgloss.JoinVertical(lipgloss.Left,
+	footer := tuiui.NewFooter(appKeymap...).
+		Status(m.footerStatus()).
+		Render(w, theme)
+
+	view := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		"",
 		body,
 		notice,
 		footer,
 	)
+	if m.helpModal.Visible() {
+		return m.helpModal.View(theme)
+	}
+	return view
 }
 
 func (m model) renderBody(availH, w int) string {
@@ -909,7 +948,7 @@ func (m model) renderInPanel(content string, availH, w int) string {
 	}
 	content = padLines(content, innerW)
 	content = padToHeight(content, innerH)
-	return panelStyle(false).Render(content)
+	return theme.Panel(false).Render(content)
 }
 
 // renderListPanel renders the job list (and detail panel, when open) inside
@@ -937,15 +976,15 @@ func (m model) renderSidebar(availH int) string {
 			line = "• " + name
 		}
 		if i == m.sidebarIdx {
-			line = titleStyle().Render("▸ " + name)
+			line = theme.Title().Render("▸ " + name)
 		} else if name == m.profile {
-			line = dimStyle().Render("• " + name)
+			line = theme.Dim().Render("• " + name)
 		}
 		lines = append(lines, line)
 	}
 	lines = append(lines, "", "enter: aplicar", "esc: voltar")
 	content := padToHeight(strings.Join(lines, "\n"), availH-2)
-	return panelStyle(true).Render(padLines(content, inner))
+	return theme.Panel(true).Render(padLines(content, inner))
 }
 
 func (m model) renderTiers(availH, w int) string {
@@ -998,7 +1037,7 @@ func (m model) renderTierColumn(br bracket, idx, inner, availH int) string {
 		}
 	}
 	content := padToHeight(strings.Join(lines, "\n"), availH-2)
-	return panelStyle(focused).Render(padLines(content, inner))
+	return theme.Panel(focused).Render(padLines(content, inner))
 }
 
 func (m model) renderFilter(availH, w int) string {
@@ -1008,7 +1047,7 @@ func (m model) renderFilter(availH, w int) string {
 	}
 	var left string
 	if m.filter == "" {
-		left = filterPromptStyle().Render("⌕ ") + dimStyle().Render("palavras · remote · score:NN · src:NOME")
+		left = filterPromptStyle().Render("⌕ ") + theme.Dim().Render("palavras · remote · score:NN · src:NOME")
 	} else {
 		left = filterPromptStyle().Render("⌕ ") + filterQueryStyle().Render(m.filterWithCursor())
 	}
@@ -1032,9 +1071,9 @@ func (m model) filterCountText() string {
 		return errorStyle().Render("0 vagas")
 	}
 	if m.filter != "" {
-		return dimStyle().Render(fmt.Sprintf("%d/%d vagas", m.total, len(m.all)))
+		return theme.Dim().Render(fmt.Sprintf("%d/%d vagas", m.total, len(m.all)))
 	}
-	return dimStyle().Render(fmt.Sprintf("%d vagas", m.total))
+	return theme.Dim().Render(fmt.Sprintf("%d vagas", m.total))
 }
 
 func (m model) filterWithCursor() string {
@@ -1102,9 +1141,9 @@ func activityBadge(kind string) string {
 	case "veto":
 		return warningStyle().Render(s)
 	case "llm":
-		return titleStyle().Render(s)
+		return theme.Title().Render(s)
 	case "open":
-		return dimStyle().Render(s)
+		return theme.Dim().Render(s)
 	case "erro":
 		return errorStyle().Render(s)
 	default:
@@ -1225,7 +1264,7 @@ func (m model) renderCardJob(j Job, sel bool, w int) string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		padLines(line1, w),
-		dimStyle().Render(padLines(line2, w)),
+		theme.Dim().Render(padLines(line2, w)),
 		mutedStyle().Render(padLines(line3, w)),
 		"", // gap between cards
 	)
@@ -1242,7 +1281,7 @@ func (m model) scoreBadgeForScore(score int) lipgloss.Style {
 	case score >= 60:
 		return warningStyle()
 	default:
-		return dimStyle()
+		return theme.Dim()
 	}
 }
 
@@ -1302,11 +1341,11 @@ func (m model) renderDetail(dw, availH int) string {
 	for i, l := range ls {
 		switch {
 		case i == 0:
-			ls[i] = titleStyle().Render(l)
+			ls[i] = theme.Title().Render(l)
 		case i == 1:
-			ls[i] = dimStyle().Render(l)
+			ls[i] = theme.Dim().Render(l)
 		case strings.HasPrefix(l, "Fonte:"):
-			ls[i] = dimStyle().Render(l)
+			ls[i] = theme.Dim().Render(l)
 		case strings.HasPrefix(l, "Tags:"):
 			ls[i] = mutedStyle().Render(l)
 		case strings.HasPrefix(l, "Score:"):
@@ -1314,15 +1353,13 @@ func (m model) renderDetail(dw, availH int) string {
 		}
 	}
 	content := padToHeight(strings.Join(ls, "\n"), availH-2)
-	return panelStyle(true).Render(padLines(content, inner))
+	return theme.Panel(true).Render(padLines(content, inner))
 }
 
-func (m model) renderFooter(w int) string {
-	// footerStyle pads 2 columns each side, so content is limited to w-4.
-	inner := w - 4
-	if inner < 1 {
-		inner = 1
-	}
+// footerStatus is the left side of the footer bar: the dynamic state summary
+// (count, profile, which views are active). The right side (keybinding hints)
+// is generated from appKeymap by tuiui.Footer.
+func (m model) footerStatus() string {
 	parts := []string{fmt.Sprintf("%d vagas", m.total), "perfil: " + m.profile}
 	if m.filter != "" {
 		parts[0] = fmt.Sprintf("%d/%d vagas", m.total, len(m.all))
@@ -1336,45 +1373,5 @@ func (m model) renderFooter(w int) string {
 	if m.tierView {
 		parts = append(parts, "faixas")
 	}
-	left := " " + strings.Join(parts, " · ")
-	hints := "/filtro · o detalhe · t faixas · ctrl+e perfil · x vetar · m llm · c coleta · q sai"
-
-	text := left
-	if l, h := len([]rune(left)), len([]rune(hints)); l+h+2 <= inner {
-		text = left + strings.Repeat(" ", inner-l-h) + hints
-	} else if l+2 > inner {
-		text = truncate(left, inner-1) + "…"
-	} else {
-		// Truncate at a whole-token boundary so a key never shows without its
-		// label (e.g. "… q" instead of "… q sai").
-		text = left + " " + fitHints(hints, inner-l-3)
-	}
-	return text
-}
-
-// fitHints drops trailing " · " tokens until the string fits width, then
-// appends an ellipsis. Only whole tokens are dropped.
-func fitHints(hints string, width int) string {
-	if width < 1 {
-		return "…"
-	}
-	if len([]rune(hints)) <= width {
-		return hints
-	}
-	toks := strings.Split(hints, " · ")
-	out := ""
-	for i, tok := range toks {
-		cand := tok
-		if i > 0 {
-			cand = out + " · " + tok
-		}
-		if len([]rune(cand)) > width-1 {
-			break
-		}
-		out = cand
-	}
-	if out == "" {
-		return "…"
-	}
-	return out + "…"
+	return strings.Join(parts, " · ")
 }

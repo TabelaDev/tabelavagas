@@ -5,13 +5,10 @@ import (
 	"github.com/ianptkcs/tabelatuiui"
 )
 
-func headerStyle(width int) lipgloss.Style { return theme.Header(width) }
-func footerStyle(width int) lipgloss.Style { return theme.Footer(width) }
-func panelStyle(focused bool) lipgloss.Style {
-	return theme.Panel(focused)
-}
-func titleStyle() lipgloss.Style   { return theme.Title() }
-func dimStyle() lipgloss.Style     { return theme.Dim() }
+// App-specific styles on top of tabelatuiui's shared chrome (called as
+// theme.Header/Footer/Panel/Title/Dim and the semantic helpers directly).
+// Colors live in the theme resolved in theme.go.
+
 func mutedStyle() lipgloss.Style   { return theme.Muted() }
 func successStyle() lipgloss.Style { return theme.Success() }
 func warningStyle() lipgloss.Style { return theme.Warning() }

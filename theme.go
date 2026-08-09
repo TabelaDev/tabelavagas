@@ -1,13 +1,11 @@
 package main
 
 import (
-	"path/filepath"
-
 	"github.com/ianptkcs/tabelatuiui"
 )
 
-var (
-	dmsSettingsPath = tuiui.EnvOr("TABELAVAGAS_DMS_SETTINGS", filepath.Join(tuiui.HomeDir(), ".config", "DankMaterialShell", "settings.json"))
-	fallbackAccent  = tuiui.EnvOr("TABELAVAGAS_ACCENT", "mauve")
-	theme           = tuiui.ResolveTheme(dmsSettingsPath, fallbackAccent)
-)
+// theme mirrors the installed DankMaterialShell's own configured accent
+// (falling back to a manually chosen Catppuccin accent when DMS isn't
+// installed/configured). TABELAVAGAS_DMS_SETTINGS/TABELAVAGAS_ACCENT env
+// vars override the defaults; see tabelatuiui.NewThemeFromEnv.
+var theme = tuiui.NewThemeFromEnv("TABELAVAGAS")

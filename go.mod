@@ -5,9 +5,10 @@ go 1.26.1
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/ianptkcs/tabelatuiui v0.1.1-0.20260806194054-d2b572eeec24
+	github.com/ianptkcs/tabelatuiui v0.2.0
 	modernc.org/sqlite v1.56.0
 )
 
