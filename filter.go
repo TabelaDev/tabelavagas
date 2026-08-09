@@ -16,7 +16,7 @@ type bracket struct {
 //
 //	remote | onsite | presencial  modo de trabalho
 //	score:NN | min:NN             score mínimo
-//	source:NAME | src:NAME        fonte (remotive/gupy/programathor)
+//	source:NAME | src:NAME        fonte (remotive/programathor)
 //	type:TYPE | tipo:TYPE         nível/contrato (estágio, junior, clt, ...)
 //	qualquer outra palavra        busca por substring no título/empresa/tags
 type jobFilter struct {

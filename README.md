@@ -65,7 +65,6 @@ Cada fonte é transparente quanto ao tipo; `tabelavagas sources` mostra:
 | Fonte        | tipo       | como é obtida                                                     |
 | ------------ | ---------- | ----------------------------------------------------------------- |
 | remotive     | `api`      | JSON público documentado (remotive.com/api), sem auth             |
-| gupy         | `api`      | API oficial api.gupy.io (Bearer via `TABELAVAGAS_GUPY_TOKEN`)     |
 | programathor | `scraping` | HTML server-rendered parseado via goquery                         |
 
 - **api**: dado estruturado de endpoint oficial. Quebra = fornecedor mudou o contrato.
@@ -133,7 +132,6 @@ Env LLM:
 | Var                          | Padrão                                              |
 | ---------------------------- | --------------------------------------------------- |
 | `TABELAVAGAS_DB`             | `~/.local/state/tabelavagas/vagas.db`               |
-| `TABELAVAGAS_GUPY_TOKEN`     | Bearer token da API da Gupy (`developers.gupy.io`)  |
 | `TABELAVAGAS_PROFILE`        | perfil padrão (override de `--profile`)             |
 | `TABELAVAGAS_LLM_API_KEY`    | chave API OpenAI-compatível (DeepSeek etc.)         |
 | `TABELAVAGAS_LLM_BASEURL`    | base URL do provider LLM                             |

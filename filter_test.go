@@ -71,7 +71,7 @@ func TestFilterMatches(t *testing.T) {
 		{"remote only includes remote", "remote", true},
 		{"onsite excludes remote", "onsite", false},
 		{"source match", "src:remotive", true},
-		{"source mismatch excluded", "source:gupy", false},
+		{"source mismatch excluded", "source:programathor", false},
 		{"type match", "type:full_time", true},
 		{"type mismatch excluded", "tipo:freelance", false},
 	}

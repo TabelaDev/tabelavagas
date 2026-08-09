@@ -9,7 +9,7 @@ import (
 
 // remotiveCollector uses the Remotive public API (documented JSON, no auth)
 // for remote jobs — https://remotive.com/api . It's reliable enough to demo
-// the pipeline end-to-end; Gupy (Bearer) and the BR SPAs are extras.
+// the pipeline end-to-end; the BR sources are extras.
 type remotiveCollector struct{}
 
 func (r *remotiveCollector) name() string { return "remotive" }

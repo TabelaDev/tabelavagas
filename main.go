@@ -32,7 +32,6 @@ Customize em ~/.config/tabelavagas/profiles.toml (veja README).
 
 Env:
   TABELAVAGAS_DB             path do SQLite (default ~/.local/state/tabelavagas/vagas.db)
-  TABELAVAGAS_GUPY_TOKEN     bearer token da API Gupy
   TABELAVAGAS_PROFILE        perfil padrão (override de --profile)
   TABELAVAGAS_LLM_API_KEY    chave API OpenAI-compatível (DeepSeek etc.)
   TABELAVAGAS_LLM_BASEURL    base URL do provider LLM (default: api.deepseek.com/v1)
