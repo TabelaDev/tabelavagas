@@ -38,7 +38,7 @@ func openStoreAt(path string) (*Store, error) {
 }
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
 CREATE TABLE IF NOT EXISTS jobs (
 	source  TEXT NOT NULL,
 	id      TEXT NOT NULL,
@@ -53,11 +53,52 @@ CREATE TABLE IF NOT EXISTS jobs (
 	seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	score   REAL,
 	notified INTEGER DEFAULT 0,
+	vetoed  INTEGER DEFAULT 0,
 	llm_score REAL,
 	llm_hash TEXT,
 	PRIMARY KEY (source, id)
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score);`)
+CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score);`); err != nil {
+		return err
+	}
+	// Pre-existing DBs created by older builds may miss columns that newer
+	// code expects (vetoed, llm_score, llm_hash) — add them in place.
+	for _, cc := range []struct{ col, decl string }{
+		{"vetoed", "INTEGER DEFAULT 0"},
+		{"llm_score", "REAL"},
+		{"llm_hash", "TEXT"},
+		{"salary", "TEXT"},
+		{"description", "TEXT"},
+	} {
+		if err := s.ensureColumn("jobs", cc.col, cc.decl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureColumn adds col with decl to table if it doesn't already exist.
+func (s *Store) ensureColumn(table, col, decl string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == col {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + decl)
 	return err
 }
 
@@ -70,8 +111,8 @@ func (s *Store) save(jobs []Job) (int, error) {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO jobs
-		(source, id, url, title, company, location, remote, type, deadline, raw)
-		VALUES (?,?,?,?,?,?,?,?,?,?)`)
+		(source, id, url, title, company, location, remote, type, deadline, salary, description, raw)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return 0, err
 	}
@@ -79,7 +120,7 @@ func (s *Store) save(jobs []Job) (int, error) {
 
 	inserted := 0
 	for _, j := range jobs {
-		res, err := stmt.Exec(j.Source, j.ID, j.URL, j.Title, j.Company, j.Location, b2i(j.Remote), j.Type, j.Deadline, truncate(j.Raw, 2000))
+		res, err := stmt.Exec(j.Source, j.ID, j.URL, j.Title, j.Company, j.Location, b2i(j.Remote), j.Type, j.Deadline, j.Salary, truncate(j.Description, 4000), truncate(j.Raw, 2000))
 		if err != nil {
 			return inserted, err
 		}
@@ -108,18 +149,34 @@ func (s *Store) close() { s.db.Close() }
 
 // top returns up to n jobs with the highest score (already scored).
 func (s *Store) top(n int) ([]Job, error) {
-	return s.topWhere(n, "")
+	return s.topFiltered(n, 0, false, false)
 }
 
 // topUnnotified returns up to n jobs with the highest score that have not
 // been notified yet.
 func (s *Store) topUnnotified(n int) ([]Job, error) {
-	return s.topWhere(n, "AND notified = 0")
+	return s.topFiltered(n, 0, true, false)
 }
 
-func (s *Store) topWhere(n int, extra string) ([]Job, error) {
-	rows, err := s.db.Query(`SELECT source, id, url, title, company, location, remote, type, deadline, raw, score
-		FROM jobs WHERE score IS NOT NULL `+extra+` ORDER BY score DESC LIMIT ?`, n)
+// topFiltered returns up to n scored jobs, optionally filtered by a minimum
+// score, excluding jobs already notified, and/or including vetoed jobs.
+func (s *Store) topFiltered(n, minScore int, onlyUnnotified, includeVetoed bool) ([]Job, error) {
+	q := `SELECT source, id, url, title, company, location, remote, type, deadline, salary, description, raw, score, vetoed
+		FROM jobs WHERE score IS NOT NULL`
+	args := []any{}
+	if minScore > 0 {
+		q += ` AND score >= ?`
+		args = append(args, minScore)
+	}
+	if onlyUnnotified {
+		q += ` AND notified = 0`
+	}
+	if !includeVetoed {
+		q += ` AND vetoed = 0`
+	}
+	q += ` ORDER BY score DESC LIMIT ?`
+	args = append(args, n)
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +192,29 @@ func (s *Store) topWhere(n int, extra string) ([]Job, error) {
 	return out, rows.Err()
 }
 
-// scoreAll recomputes the score for every stored job using the given scorer.
+// setVetoed marks (or unmarks) a job as vetoed.
+func (s *Store) setVetoed(source, id string, v bool) error {
+	_, err := s.db.Exec(`UPDATE jobs SET vetoed = ? WHERE source = ? AND id = ?`, b2i(v), source, id)
+	return err
+}
+
+// scoreAll recomputes the score for every stored job using the given scorer
+// and writes them to the active score column.
 func scoreAll(s *Store, sc Scorer) error {
 	jobs, err := s.all()
 	if err != nil {
 		return err
+	}
+	for i := range jobs {
+		jobs[i].Score = sc.Score(jobs[i])
+	}
+	return s.applyScores(jobs)
+}
+
+// applyScores writes the given jobs' scores into the active score column.
+func (s *Store) applyScores(jobs []Job) error {
+	if len(jobs) == 0 {
+		return nil
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -152,7 +227,6 @@ func scoreAll(s *Store, sc Scorer) error {
 	}
 	defer stmt.Close()
 	for _, j := range jobs {
-		j.Score = sc.Score(j)
 		if _, err := stmt.Exec(j.Score, j.Source, j.ID); err != nil {
 			return err
 		}
@@ -160,8 +234,30 @@ func scoreAll(s *Store, sc Scorer) error {
 	return tx.Commit()
 }
 
+// scoreAllLLM computes (and caches in llm_score/llm_hash) the LLM score for
+// every job WITHOUT touching the active score column — the caller decides
+// whether to apply. Re-runs are free: the LLM scorer reads its cache.
+func scoreAllLLM(s *Store, sc Scorer) ([]Job, error) {
+	return scoreAllLLMProgress(s, sc, nil)
+}
+
+// scoreAllLLMProgress is scoreAllLLM with a per-job progress callback.
+func scoreAllLLMProgress(s *Store, sc Scorer, onJob func(done, total int)) ([]Job, error) {
+	jobs, err := s.all()
+	if err != nil {
+		return nil, err
+	}
+	for i := range jobs {
+		jobs[i].Score = sc.Score(jobs[i])
+		if onJob != nil {
+			onJob(i+1, len(jobs))
+		}
+	}
+	return jobs, nil
+}
+
 func (s *Store) all() ([]Job, error) {
-	rows, err := s.db.Query(`SELECT source, id, url, title, company, location, remote, type, deadline, raw, score FROM jobs`)
+	rows, err := s.db.Query(`SELECT source, id, url, title, company, location, remote, type, deadline, salary, description, raw, score, vetoed FROM jobs`)
 	if err != nil {
 		return nil, err
 	}
@@ -179,18 +275,26 @@ func (s *Store) all() ([]Job, error) {
 
 func scanJob(rows *sql.Rows) (Job, error) {
 	var j Job
-	var remote int
+	var remote, vetoed int
 	var score sql.NullInt64
-	if err := rows.Scan(&j.Source, &j.ID, &j.URL, &j.Title, &j.Company, &j.Location, &remote, &j.Type, &j.Deadline, &j.Raw, &score); err != nil {
+	if err := rows.Scan(&j.Source, &j.ID, &j.URL, &j.Title, &j.Company, &j.Location, &remote, &j.Type, &j.Deadline, &j.Salary, &j.Description, &j.Raw, &score, &vetoed); err != nil {
 		return j, err
 	}
 	j.Remote = remote == 1
+	j.Vetoed = vetoed == 1
 	if score.Valid {
 		j.Score = int(score.Int64)
 	} else {
 		j.Score = 0
 	}
 	return j, nil
+}
+
+// setDetails caches per-job detail fields (salary, description) fetched
+// lazily from the source page.
+func (s *Store) setDetails(source, id, salary, description string) error {
+	_, err := s.db.Exec(`UPDATE jobs SET salary = ?, description = ? WHERE source = ? AND id = ?`, salary, description, source, id)
+	return err
 }
 
 // llmCachedScore returns the cached LLM score and content hash for a job.

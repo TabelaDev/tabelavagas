@@ -53,7 +53,7 @@ type heuristicScorer struct {
 }
 
 func (h *heuristicScorer) Score(j Job) int {
-	text := strings.ToLower(j.Title + " " + j.Company + " " + strings.Join(j.Tags, " ") + " " + j.Raw)
+	text := strings.ToLower(j.Title + " " + j.Company + " " + strings.Join(j.Tags, " ") + " " + j.Raw + " " + j.Description)
 	s := 20
 
 	hits := 0

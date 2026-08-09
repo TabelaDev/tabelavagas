@@ -62,7 +62,6 @@ func (r *remotiveCollector) collect() ([]Job, error) {
 			Remote:   true,
 			Type:     j.Type,
 			Tags:     j.Tags,
-			Raw:      strings.Join(j.Tags, " "),
 		})
 	}
 	return jobs, nil

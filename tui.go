@@ -1,36 +1,81 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 const (
-	headerLines = 1
-	footerLines = 1
-	spinnerW    = 2
+	headerLines   = 1
+	gapLines      = 1
+	footerLines   = 1
+	noticeLines   = 1
+	cardH         = 3
+	detailMin     = 32
+	detailMax     = 64
+	sidebarW      = 22
+	maxLoad       = 1000
+	noticeTimeout = 3 * time.Second
+	maxLog        = 100
 )
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type mode int
 
 const (
 	modeList mode = iota
 	modeCollecting
+	modeFilter
+	modeLogs
+	modeLLM
+	modeConfirm
 )
 
+type logEntry struct {
+	at   time.Time
+	text string
+}
+
 type model struct {
-	jobs    []Job
-	cursor  int
-	total   int
-	width   int
-	height  int
-	mode    mode
-	status  string
-	profile string
+	all           []Job // full loaded set (unfiltered)
+	jobs          []Job // filtered view
+	cursor        int
+	total         int
+	width         int
+	height        int
+	mode          mode
+	status        string
+	statusTemp    bool
+	statusGen     int
+	profile       string
+	showDetail    bool
+	showVetoed    bool
+	filter        string
+	filterCur     int
+	spinner       int
+	collectLines  []string
+	collectCh     chan string
+	sidebar       bool
+	sidebarIdx    int
+	profiles      []string
+	tierView      bool
+	colIdx        int
+	log           []logEntry
+	llmCh         chan llmScoreMsg
+	llmDone       int
+	llmTotal      int
+	llmJobs       []Job
+	confirmText   string
+	detailLoading string // "source:id" of the job whose detail is being fetched
 }
 
 type jobsLoadedMsg struct {
@@ -38,13 +83,61 @@ type jobsLoadedMsg struct {
 }
 
 type collectDoneMsg struct {
-	n   int
-	err error
+	n      int
+	err    error
+	notice string
+}
+
+type collectProgressMsg struct {
+	line string
+}
+
+type collectTickMsg struct{}
+
+type noticeTickMsg struct {
+	gen int
+}
+
+type vetoDoneMsg struct {
+	source, id, title string
+	vetoed            bool
+	err               error
+}
+
+type profileAppliedMsg struct {
+	name string
+	err  error
+}
+
+// llmScoreMsg reports LLM scoring progress or its final result. jobs != nil
+// means scoring finished; otherwise done/total is progress.
+type llmScoreMsg struct {
+	done, total int
+	jobs        []Job
+	err         error
+}
+
+type llmTickMsg struct{}
+
+// detailLoadedMsg carries the lazily-fetched job detail (salary/description).
+type detailLoadedMsg struct {
+	source, id, salary, description string
+	err                             error
 }
 
 func newModel() model {
+	profiles := profileNames()
+	idx := 0
+	for i, p := range profiles {
+		if p == defaultProfile() {
+			idx = i
+			break
+		}
+	}
 	return model{
-		profile: defaultProfile(),
+		profile:    defaultProfile(),
+		profiles:   profiles,
+		sidebarIdx: idx,
 	}
 }
 
@@ -58,7 +151,9 @@ func (m model) loadJobs() tea.Msg {
 		return jobsLoadedMsg{nil}
 	}
 	defer store.close()
-	jobs, err := store.top(50)
+	// Only unnotified jobs (the TUI is the "daily" view). Vetoed jobs are
+	// loaded too so the V toggle can reveal them without a reload.
+	jobs, err := store.topFiltered(maxLoad, 0, true, true)
 	if err != nil {
 		return jobsLoadedMsg{nil}
 	}
@@ -73,101 +168,630 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case jobsLoadedMsg:
-		m.jobs = msg.jobs
-		m.total = len(msg.jobs)
+		m.all = msg.jobs
+		m.applyFilter()
 		m.mode = modeList
-		if m.total == 0 {
-			m.status = "base vazia. pressione c para coletar"
-		} else {
-			m.status = ""
+		if m.total == 0 && m.filter == "" {
+			return m.setStatus("base vazia. pressione c para coletar", false)
 		}
 		return m, nil
 
 	case collectDoneMsg:
 		m.mode = modeList
+		m.collectLines = nil
+		m.collectCh = nil
 		if msg.err != nil {
-			m.status = fmt.Sprintf("erro: %v", msg.err)
-		} else {
-			m.status = fmt.Sprintf("collect: %d novas vagas", msg.n)
+			m = m.appendLog("erro: " + msg.err.Error())
+			return m.setStatus("erro: "+msg.err.Error(), false)
 		}
-		return m, m.loadJobs
+		m = m.appendLog(msg.notice)
+		nm, sc := m.setStatus(msg.notice, true)
+		return nm, tea.Batch(sc, nm.loadJobs)
+
+	case collectProgressMsg:
+		m.collectLines = append(m.collectLines, msg.line)
+		m.spinner++
+		return m, m.collectDriver
+
+	case collectTickMsg:
+		m.spinner++
+		return m, m.collectDriver
+
+	case noticeTickMsg:
+		if msg.gen == m.statusGen && m.statusTemp {
+			m.status = ""
+		}
+		return m, nil
+
+	case vetoDoneMsg:
+		if msg.err != nil {
+			m = m.appendLog("erro: " + msg.err.Error())
+			return m.setStatus("erro: "+msg.err.Error(), false)
+		}
+		for i := range m.all {
+			if m.all[i].Source == msg.source && m.all[i].ID == msg.id {
+				m.all[i].Vetoed = msg.vetoed
+				break
+			}
+		}
+		m.applyFilter()
+		verb := "vetada"
+		if !msg.vetoed {
+			verb = "desvetada"
+		}
+		m = m.appendLog(verb + ": " + msg.title)
+		return m.setStatus(verb+": "+msg.title, true)
+
+	case profileAppliedMsg:
+		if msg.err != nil {
+			m = m.appendLog("erro: " + msg.err.Error())
+			return m.setStatus("erro: "+msg.err.Error(), false)
+		}
+		m.profile = msg.name
+		m.sidebar = false
+		m = m.appendLog("perfil: " + msg.name)
+		nm, sc := m.setStatus("perfil: "+msg.name+" · re-scoreado", true)
+		return nm, tea.Batch(sc, nm.loadJobs)
+
+	case llmScoreMsg:
+		if msg.err != nil {
+			m.mode = modeList
+			m.llmCh = nil
+			return m.setStatus("erro: "+msg.err.Error(), false)
+		}
+		if msg.jobs != nil {
+			m.mode = modeConfirm
+			m.llmCh = nil
+			m.llmJobs = msg.jobs
+			m.confirmText = fmt.Sprintf("aplicar scores LLM em %d vagas?", len(msg.jobs))
+			return m, nil
+		}
+		m.llmDone, m.llmTotal = msg.done, msg.total
+		m.spinner++
+		return m, m.llmDriver
+
+	case llmTickMsg:
+		m.spinner++
+		return m, m.llmDriver
+
+	case detailLoadedMsg:
+		m.detailLoading = ""
+		if msg.err != nil {
+			return m.setStatus("erro ao buscar descrição: "+msg.err.Error(), true)
+		}
+		if store, err := openStore(); err == nil {
+			_ = store.setDetails(msg.source, msg.id, msg.salary, msg.description)
+			store.close()
+		}
+		for i := range m.all {
+			if m.all[i].Source == msg.source && m.all[i].ID == msg.id {
+				m.all[i].Salary = msg.salary
+				m.all[i].Description = msg.description
+			}
+		}
+		for i := range m.jobs {
+			if m.jobs[i].Source == msg.source && m.jobs[i].ID == msg.id {
+				m.jobs[i].Salary = msg.salary
+				m.jobs[i].Description = msg.description
+			}
+		}
+		return m.setStatus("descrição carregada", true)
 
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		nm, cmd := m.handleKey(msg)
+		nm2, fetchCmd := nm.(model).maybeFetchDetail()
+		if fetchCmd != nil {
+			cmd = tea.Batch(cmd, fetchCmd)
+		}
+		return nm2, cmd
 	}
 	return m, nil
 }
 
-func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c", "esc":
-		return m, tea.Quit
+// appendLog records an activity entry, keeping at most maxLog.
+func (m model) appendLog(text string) model {
+	m.log = append(m.log, logEntry{at: time.Now(), text: text})
+	if len(m.log) > maxLog {
+		m.log = m.log[len(m.log)-maxLog:]
+	}
+	return m
+}
 
+func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.mode {
+	case modeFilter:
+		return m.handleFilterKey(msg)
+	case modeLogs:
+		return m.handleLogKey(msg)
+	case modeConfirm:
+		return m.handleConfirmKey(msg)
+	default:
+		return m.handleListKey(msg)
+	}
+}
+
+func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.sidebar {
+		return m.handleSidebarKey(msg)
+	}
+	return m.handleBodyKey(msg)
+}
+
+func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "ctrl+e":
+		m.sidebar = true
+	case "t":
+		m.tierView = !m.tierView
+		if m.tierView {
+			m.clampTierCursor()
+		} else if m.cursor >= m.total {
+			m.cursor = m.total - 1
+			if m.cursor < 0 {
+				m.cursor = 0
+			}
+		}
+	case "L":
+		m.mode = modeLogs
+	case "/":
+		m.mode = modeFilter
+		m.filterCur = len(m.filter)
+	case "o":
+		if !m.tierView {
+			m.showDetail = !m.showDetail
+		}
+	case "x":
+		if j, ok := m.focusedJob(); ok {
+			return m, func() tea.Msg { return m.runVetoToggle(j) }
+		}
+	case "V":
+		m.showVetoed = !m.showVetoed
+		m.applyFilter()
+		if m.showVetoed {
+			return m.setStatus("mostrando vagas vetadas", true)
+		}
+		return m.setStatus("escondendo vagas vetadas", true)
 	case "j", "down":
-		if m.cursor < m.total-1 {
+		if m.tierView {
+			m.cursor++
+			m.clampTierCursor()
+		} else if m.cursor < m.total-1 {
 			m.cursor++
 		}
 	case "k", "up":
-		if m.cursor > 0 {
+		if m.tierView {
 			m.cursor--
+			m.clampTierCursor()
+		} else if m.cursor > 0 {
+			m.cursor--
+		}
+	case "h", "left":
+		if m.tierView && m.colIdx > 0 {
+			m.colIdx--
+			m.clampTierCursor()
+		}
+	case "l", "right":
+		if m.tierView && m.colIdx < 2 {
+			m.colIdx++
+			m.clampTierCursor()
 		}
 	case "g", "home":
 		m.cursor = 0
 	case "G", "end":
-		if m.total > 0 {
+		if m.tierView {
+			b := m.tierGroups()
+			if m.colIdx < len(b) && len(b[m.colIdx].jobs) > 0 {
+				m.cursor = len(b[m.colIdx].jobs) - 1
+			}
+		} else if m.total > 0 {
 			m.cursor = m.total - 1
 		}
 	case "pgup":
 		m.cursor -= 10
-		if m.cursor < 0 {
-			m.cursor = 0
-		}
+		m.clampCursor()
 	case "pgdown":
 		m.cursor += 10
-		if m.cursor >= m.total {
-			m.cursor = m.total - 1
-		}
-
+		m.clampCursor()
 	case "enter":
-		if m.total > 0 && m.cursor < m.total {
-			url := m.jobs[m.cursor].URL
-			return m, openURL(url)
+		if j, ok := m.focusedJob(); ok {
+			return m, openURL(j.URL)
 		}
-
 	case "c":
 		m.mode = modeCollecting
-		m.status = "coletando..."
-		return m, m.runCollect
-
+		m.spinner = 0
+		m.collectLines = nil
+		m.status = ""
+		m.collectCh = make(chan string, 16)
+		go m.collectStream()
+		return m, m.collectDriver
 	case "r":
-		return m, m.loadJobs
-
+		nm, c := m.setStatus("recarregado", true)
+		return nm, tea.Batch(c, m.loadJobs)
 	case "n":
-		if m.total > 0 {
+		if _, ok := m.focusedJob(); ok {
 			return m, m.runNotify
+		}
+	case "m":
+		if os.Getenv("TABELAVAGAS_LLM_API_KEY") == "" {
+			return m.setStatus("chave LLM não definida (TABELAVAGAS_LLM_API_KEY)", false)
+		}
+		m.mode = modeLLM
+		m.spinner = 0
+		m.llmDone, m.llmTotal = 0, 0
+		m.status = ""
+		m.llmCh = make(chan llmScoreMsg, 64)
+		go m.llmScoreStream()
+		return m, m.llmDriver
+	}
+	return m, nil
+}
+
+func (m model) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "ctrl+e", "esc", "l", "right":
+		m.sidebar = false
+	case "j", "down":
+		if m.sidebarIdx < len(m.profiles)-1 {
+			m.sidebarIdx++
+		}
+	case "k", "up":
+		if m.sidebarIdx > 0 {
+			m.sidebarIdx--
+		}
+	case "g":
+		m.sidebarIdx = 0
+	case "G":
+		m.sidebarIdx = len(m.profiles) - 1
+	case "enter":
+		if len(m.profiles) > 0 {
+			return m, func() tea.Msg { return m.runApplyProfile(m.profiles[m.sidebarIdx]) }
 		}
 	}
 	return m, nil
 }
 
-func (m model) runCollect() tea.Msg {
-	n, err := runCollect()
-	return collectDoneMsg{n: n, err: err}
+func (m model) handleLogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "esc", "L", "ctrl+c":
+		m.mode = modeList
+	}
+	return m, nil
+}
+
+// handleConfirmKey resolves the y/N decision after LLM scoring: y applies the
+// cached LLM scores to the active score column, anything else keeps heuristic.
+func (m model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "y", "Y":
+		store, err := openStore()
+		if err != nil {
+			m.mode = modeList
+			return m.setStatus("erro: "+err.Error(), false)
+		}
+		defer store.close()
+		m.mode = modeList
+		jobs := m.llmJobs
+		m.llmJobs = nil
+		if err := store.applyScores(jobs); err != nil {
+			return m.setStatus("erro: "+err.Error(), false)
+		}
+		m = m.appendLog("scores LLM aplicados")
+		nm, sc := m.setStatus("scores LLM aplicados", true)
+		return nm, tea.Batch(sc, nm.loadJobs)
+	case "n", "N", "esc", "q":
+		m.mode = modeList
+		m.llmJobs = nil
+		m = m.appendLog("scores LLM mantidos em cache")
+		return m.setStatus("scores LLM mantidos em cache (score atual intacto)", true)
+	}
+	return m, nil
+}
+
+func (m model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyEnter:
+		m.mode = modeList
+	case tea.KeyCtrlC:
+		return m, tea.Quit
+	case tea.KeyBackspace:
+		if m.filterCur > 0 {
+			m.filter = m.filter[:m.filterCur-1] + m.filter[m.filterCur:]
+			m.filterCur--
+			m.applyFilter()
+		}
+	case tea.KeyLeft:
+		if m.filterCur > 0 {
+			m.filterCur--
+		}
+	case tea.KeyRight:
+		if m.filterCur < len(m.filter) {
+			m.filterCur++
+		}
+	case tea.KeyHome:
+		m.filterCur = 0
+	case tea.KeyEnd:
+		m.filterCur = len(m.filter)
+	case tea.KeyCtrlU:
+		m.filter = ""
+		m.filterCur = 0
+		m.applyFilter()
+	case tea.KeyRunes:
+		for _, r := range msg.Runes {
+			m.filter = m.filter[:m.filterCur] + string(r) + m.filter[m.filterCur:]
+			m.filterCur++
+		}
+		m.applyFilter()
+	}
+	return m, nil
+}
+
+// setStatus sets the notice bar content; temp messages auto-clear after
+// noticeTimeout via a generation-guarded tick.
+func (m model) setStatus(s string, temp bool) (model, tea.Cmd) {
+	m.status = s
+	m.statusTemp = temp
+	m.statusGen++
+	if temp {
+		gen := m.statusGen
+		return m, tea.Tick(noticeTimeout, func(time.Time) tea.Msg {
+			return noticeTickMsg{gen: gen}
+		})
+	}
+	return m, nil
+}
+
+// applyFilter recomputes the visible jobs from the full set and keeps the
+// cursor in bounds.
+func (m *model) applyFilter() {
+	f := parseFilter(m.filter)
+	filtered := make([]Job, 0, len(m.all))
+	for _, j := range m.all {
+		if j.Vetoed && !m.showVetoed {
+			continue
+		}
+		if f.matches(j) {
+			filtered = append(filtered, j)
+		}
+	}
+	m.jobs = filtered
+	m.total = len(filtered)
+	m.clampCursor()
+}
+
+// clampCursor keeps the list cursor (and tier column) within bounds.
+func (m *model) clampCursor() {
+	if m.tierView {
+		m.clampTierCursor()
+		return
+	}
+	if m.cursor >= m.total {
+		m.cursor = m.total - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
+// focusedJob returns the job under the cursor, in either list or tier view.
+func (m model) focusedJob() (Job, bool) {
+	if m.tierView {
+		return m.focusedTierJob()
+	}
+	if m.total > 0 && m.cursor < m.total {
+		return m.jobs[m.cursor], true
+	}
+	return Job{}, false
+}
+
+// maybeFetchDetail lazily fetches the job detail page (salary/description)
+// when the detail panel is showing a Programathor job without a description
+// yet. Runs once per job (guarded by detailLoading).
+func (m model) maybeFetchDetail() (model, tea.Cmd) {
+	if m.mode != modeList || !m.showDetail || m.detailLoading != "" {
+		return m, nil
+	}
+	j, ok := m.focusedJob()
+	if !ok || j.Source != "programathor" || j.Description != "" {
+		return m, nil
+	}
+	m.detailLoading = j.Source + ":" + j.ID
+	return m, func() tea.Msg {
+		salary, desc, err := programathorDetail(j.URL)
+		return detailLoadedMsg{source: j.Source, id: j.ID, salary: salary, description: desc, err: err}
+	}
+}
+
+// tiers partitions the visible jobs into three score brackets.
+func (m model) tierGroups() []bracket {
+	b := []bracket{
+		{label: "80-100"},
+		{label: "60-79"},
+		{label: "<60"},
+	}
+	for _, j := range m.jobs {
+		switch {
+		case j.Score >= 80:
+			b[0].jobs = append(b[0].jobs, j)
+		case j.Score >= 60:
+			b[1].jobs = append(b[1].jobs, j)
+		default:
+			b[2].jobs = append(b[2].jobs, j)
+		}
+	}
+	return b
+}
+
+func (m model) focusedTierJob() (Job, bool) {
+	b := m.tierGroups()
+	if m.colIdx < 0 || m.colIdx >= len(b) || m.cursor >= len(b[m.colIdx].jobs) {
+		return Job{}, false
+	}
+	return b[m.colIdx].jobs[m.cursor], true
+}
+
+func (m *model) clampTierCursor() {
+	b := m.tierGroups()
+	if m.colIdx < 0 || m.colIdx >= len(b) {
+		return
+	}
+	n := len(b[m.colIdx].jobs)
+	if m.cursor >= n {
+		m.cursor = n - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
+func (m model) runVetoToggle(j Job) tea.Msg {
+	store, err := openStore()
+	if err != nil {
+		return vetoDoneMsg{err: err}
+	}
+	defer store.close()
+	v := !j.Vetoed
+	if err := store.setVetoed(j.Source, j.ID, v); err != nil {
+		return vetoDoneMsg{err: err}
+	}
+	return vetoDoneMsg{source: j.Source, id: j.ID, vetoed: v, title: j.Title}
+}
+
+func (m model) runApplyProfile(name string) tea.Msg {
+	if err := rescoreProfile(name); err != nil {
+		return profileAppliedMsg{name: name, err: err}
+	}
+	return profileAppliedMsg{name: name}
+}
+
+// collectStream runs the collectors in the background and streams one line
+// per source plus a final status into m.collectCh.
+func (m model) collectStream() {
+	ch := m.collectCh
+	total, err := runCollectProgress(func(source string, added int, cerr error) {
+		if cerr != nil {
+			ch <- "aviso " + source + ": " + cerr.Error()
+		} else {
+			ch <- fmt.Sprintf("%s: %d novas", source, added)
+		}
+	})
+	if err != nil {
+		ch <- "ERR: " + err.Error()
+		close(ch)
+		return
+	}
+	store, err := openStore()
+	if err == nil {
+		sc := buildScorer(cmdFlags{profile: m.profile}, store)
+		if err := scoreAll(store, sc); err != nil {
+			ch <- "aviso: rank falhou"
+			ch <- "DONE:" + strconv.Itoa(total) + ":fail"
+		} else {
+			ch <- "rank ok"
+			ch <- "DONE:" + strconv.Itoa(total) + ":ok"
+		}
+		store.close()
+	} else {
+		ch <- "aviso: rank falhou"
+		ch <- "DONE:" + strconv.Itoa(total) + ":fail"
+	}
+	close(ch)
+}
+
+// collectDriver polls the collect channel, surfacing progress lines and the
+// spinner frame; re-scheduled until it sees the DONE marker.
+func (m model) collectDriver() tea.Msg {
+	select {
+	case line, ok := <-m.collectCh:
+		if !ok {
+			return collectDoneMsg{notice: "collect encerrado"}
+		}
+		switch {
+		case strings.HasPrefix(line, "DONE:"):
+			rest := strings.TrimPrefix(line, "DONE:")
+			parts := strings.Split(rest, ":")
+			n, _ := strconv.Atoi(parts[0])
+			ok := len(parts) < 2 || parts[1] != "fail"
+			notice := fmt.Sprintf("collect: %d novas", n)
+			if ok {
+				notice += " · rank ok"
+			} else {
+				notice += " · rank falhou"
+			}
+			return collectDoneMsg{n: n, notice: notice}
+		case strings.HasPrefix(line, "ERR:"):
+			return collectDoneMsg{err: errors.New(strings.TrimPrefix(line, "ERR:"))}
+		default:
+			return collectProgressMsg{line: line}
+		}
+	case <-time.After(100 * time.Millisecond):
+		return collectTickMsg{}
+	}
+}
+
+// llmScoreStream scores every job with the LLM in the background, streaming
+// per-job progress and the final results (with the LLM cache filled) into
+// m.llmCh — the active score column is left untouched until the user confirms.
+func (m model) llmScoreStream() {
+	ch := m.llmCh
+	store, err := openStore()
+	if err != nil {
+		ch <- llmScoreMsg{err: err}
+		close(ch)
+		return
+	}
+	defer store.close()
+	sc := buildScorer(cmdFlags{profile: m.profile, scorer: "llm"}, store)
+	jobs, err := scoreAllLLMProgress(store, sc, func(done, total int) {
+		ch <- llmScoreMsg{done: done, total: total}
+	})
+	if err != nil {
+		ch <- llmScoreMsg{err: err}
+	} else {
+		ch <- llmScoreMsg{jobs: jobs}
+	}
+	close(ch)
+}
+
+// llmDriver polls the LLM channel, surfacing progress and the spinner frame;
+// re-scheduled until it receives the final result.
+func (m model) llmDriver() tea.Msg {
+	select {
+	case msg, ok := <-m.llmCh:
+		if !ok {
+			return llmScoreMsg{err: errors.New("pontuação LLM encerrada")}
+		}
+		return msg
+	case <-time.After(100 * time.Millisecond):
+		return llmTickMsg{}
+	}
 }
 
 func (m model) runNotify() tea.Msg {
-	store, err := openStore()
-	if err != nil {
-		return collectDoneMsg{err: err}
+	var jobs []Job
+	if m.tierView {
+		col := m.tierGroups()[m.colIdx].jobs
+		if len(col) > 5 {
+			col = col[:5]
+		}
+		jobs = col
+	} else {
+		n := 5
+		if m.total < n {
+			n = m.total
+		}
+		jobs = m.jobs[:n]
 	}
-	defer store.close()
-	n := 5
-	if m.total < n {
-		n = m.total
+	if len(jobs) == 0 {
+		return collectDoneMsg{notice: "notify: nada a notificar"}
 	}
-	jobs := m.jobs[:n]
 	notifyJobs(jobs)
-	return collectDoneMsg{n: len(jobs)}
+	return collectDoneMsg{n: len(jobs), notice: fmt.Sprintf("notify: %d vagas enviadas", len(jobs))}
 }
 
 func openURL(url string) tea.Cmd {
@@ -182,114 +806,489 @@ func (m model) View() string {
 	if m.width == 0 {
 		return "carregando..."
 	}
-
 	w := m.width
-
-	// Header
 	header := headerStyle(w).Render("tabelavagas")
 
-	// Content area
-	availH := m.height - headerLines - footerLines
+	availH := m.height - headerLines - gapLines - footerLines - noticeLines
 	if availH < 1 {
 		availH = 1
 	}
 
-	var content string
-	if m.mode == modeCollecting {
-		content = padToHeight(" coletando vagas...", availH)
-	} else if m.total == 0 {
-		content = padToHeight(" nenhuma vaga encontrada. pressione c para coletar", availH)
-	} else {
-		content = m.renderJobs(w, availH)
+	var body string
+	switch m.mode {
+	case modeCollecting:
+		body = m.renderCollecting(availH, w)
+	case modeFilter:
+		body = m.renderFilter(availH, w)
+	case modeLogs:
+		body = m.renderLogs(availH, w)
+	case modeLLM:
+		body = m.renderLLM(availH, w)
+	case modeConfirm:
+		body = m.renderConfirm(availH, w)
+	default:
+		body = m.renderBody(availH, w)
 	}
 
-	// Footer
-	footer := m.renderFooter(w)
-	footerBar := footerStyle(w).Render(footer)
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, content, footerBar)
+	notice := m.renderNotice(w)
+	footer := footerStyle(w).Render(m.renderFooter(w))
+	return lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		"",
+		body,
+		notice,
+		footer,
+	)
 }
 
-func (m model) renderJobs(w, availH int) string {
-	// Calculate visible window
-	visibleRows := availH
-	if visibleRows > m.total {
-		visibleRows = m.total
-	}
-
-	// Scroll to keep cursor visible
-	start := m.cursor - visibleRows/2
-	if start < 0 {
-		start = 0
-	}
-	if start+visibleRows > m.total {
-		start = m.total - visibleRows
-	}
-	if start < 0 {
-		start = 0
-	}
-
-	var lines []string
-	for i := start; i < start+visibleRows && i < m.total; i++ {
-		lines = append(lines, m.renderJob(i, w))
-	}
-
-	return padToHeight(strings.Join(lines, "\n"), availH)
-}
-
-func (m model) renderJob(i, w int) string {
-	j := m.jobs[i]
-	isCursor := i == m.cursor
-
-	// Score badge
-	scoreStr := fmt.Sprintf("[%3d]", j.Score)
-	var score string
-	if j.Score >= 80 {
-		score = successStyle().Render(scoreStr)
-	} else if j.Score >= 60 {
-		score = warningStyle().Render(scoreStr)
-	} else {
-		score = dimStyle().Render(scoreStr)
-	}
-
-	// Title + company
-	title := j.Title
-	company := j.Company
-	if company == "" {
-		company = "—"
-	}
-
-	// Location
-	loc := j.Location
-	if loc == "" {
-		loc = "—"
-	}
-	remote := ""
-	if j.Remote {
-		remote = " · remoto"
-	}
-
-	// Build line
-	line := fmt.Sprintf("%s %s — %s (%s%s)", score, title, company, loc, remote)
-
-	// Truncate to width
-	if w > 0 {
-		runes := []rune(line)
-		if len(runes) > w {
-			line = string(runes[:w-1]) + "…"
+func (m model) renderBody(availH, w int) string {
+	sidebar := ""
+	listW := w
+	if m.sidebar {
+		sidebar = m.renderSidebar(availH)
+		listW = w - sidebarW - 1
+		if listW < 1 {
+			listW = 1
 		}
 	}
-
-	if isCursor {
-		return panelStyle(true).Render(line)
+	var main string
+	if m.tierView {
+		main = m.renderTiers(availH, listW)
+	} else {
+		main = m.renderListPanel(availH, listW)
 	}
-	return line
+	if m.sidebar {
+		return lipgloss.JoinHorizontal(lipgloss.Top, sidebar, " ", main)
+	}
+	return main
+}
+
+// renderInPanel wraps content in a bordered panel of total size w×availH.
+func (m model) renderInPanel(content string, availH, w int) string {
+	innerW := w - 4 // border (2) + padding (2)
+	innerH := availH - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	if innerH < 1 {
+		innerH = 1
+	}
+	content = padLines(content, innerW)
+	content = padToHeight(content, innerH)
+	return panelStyle(false).Render(content)
+}
+
+// renderListPanel renders the job list (and detail panel, when open) inside
+// bordered panels, side by side.
+func (m model) renderListPanel(availH, w int) string {
+	if m.showDetail && m.total > 0 {
+		dw := m.detailWidth(w)
+		list := m.renderJobsPanel(availH, w-dw-1)
+		detail := m.renderDetail(dw, availH)
+		return lipgloss.JoinHorizontal(lipgloss.Top, list, " ", detail)
+	}
+	return m.renderJobsPanel(availH, w)
+}
+
+func (m model) renderJobsPanel(availH, w int) string {
+	return m.renderInPanel(m.renderJobs(availH-2, w-4), availH, w)
+}
+
+func (m model) renderSidebar(availH int) string {
+	inner := sidebarW - 4
+	lines := []string{"perfis"}
+	for i, name := range m.profiles {
+		line := "  " + name
+		if name == m.profile {
+			line = "• " + name
+		}
+		if i == m.sidebarIdx {
+			line = titleStyle().Render("▸ " + name)
+		} else if name == m.profile {
+			line = dimStyle().Render("• " + name)
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines, "", "enter: aplicar", "esc: voltar")
+	content := padToHeight(strings.Join(lines, "\n"), availH-2)
+	return panelStyle(true).Render(padLines(content, inner))
+}
+
+func (m model) renderTiers(availH, w int) string {
+	b := m.tierGroups()
+	n := len(b)
+	gap := 2
+	colTotal := (w - (n-1)*gap) / n
+	inner := colTotal - 4
+	if inner < 20 {
+		inner = 20
+	}
+	parts := make([]string, 0, n*2-1)
+	for i, br := range b {
+		if i > 0 {
+			parts = append(parts, " ")
+		}
+		parts = append(parts, m.renderTierColumn(br, i, inner, availH))
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+}
+
+func (m model) renderTierColumn(br bracket, idx, inner, availH int) string {
+	focused := idx == m.colIdx
+	header := fmt.Sprintf("%s (%d)", br.label, len(br.jobs))
+	lines := []string{header}
+	visible := (availH - 2) / cardH
+	if visible < 1 {
+		visible = 1
+	}
+	if len(br.jobs) == 0 {
+		lines = append(lines, "  vazio")
+	} else {
+		cur := m.cursor
+		if cur >= len(br.jobs) {
+			cur = len(br.jobs) - 1
+		}
+		start := cur - visible/2
+		if start < 0 {
+			start = 0
+		}
+		if start+visible > len(br.jobs) {
+			start = len(br.jobs) - visible
+		}
+		if start < 0 {
+			start = 0
+		}
+		for i := start; i < start+visible && i < len(br.jobs); i++ {
+			sel := focused && i == cur
+			lines = append(lines, m.renderCardJob(br.jobs[i], sel, inner))
+		}
+	}
+	content := padToHeight(strings.Join(lines, "\n"), availH-2)
+	return panelStyle(focused).Render(padLines(content, inner))
+}
+
+func (m model) renderFilter(availH, w int) string {
+	inner := w - 1 // left accent border
+	if inner < 10 {
+		inner = 10
+	}
+	var left string
+	if m.filter == "" {
+		left = filterPromptStyle().Render("⌕ ") + dimStyle().Render("palavras · remote · score:NN · src:NOME")
+	} else {
+		left = filterPromptStyle().Render("⌕ ") + filterQueryStyle().Render(m.filterWithCursor())
+	}
+	count := m.filterCountText()
+	free := inner - lipgloss.Width(left) - lipgloss.Width(count)
+	if free < 1 {
+		free = 1
+	}
+	bar := filterBarStyle(w).Render(padLines(left+strings.Repeat(" ", free)+count, inner))
+	listH := availH - 2 // bar + gap
+	if listH < 1 {
+		listH = 1
+	}
+	return bar + "\n\n" + m.renderListPanel(listH, w)
+}
+
+// filterCountText is the live match count shown at the right edge of the
+// filter bar (red when nothing matches).
+func (m model) filterCountText() string {
+	if m.total == 0 && m.filter != "" {
+		return errorStyle().Render("0 vagas")
+	}
+	if m.filter != "" {
+		return dimStyle().Render(fmt.Sprintf("%d/%d vagas", m.total, len(m.all)))
+	}
+	return dimStyle().Render(fmt.Sprintf("%d vagas", m.total))
+}
+
+func (m model) filterWithCursor() string {
+	cur := m.filterCur
+	if cur < 0 {
+		cur = 0
+	}
+	if cur > len(m.filter) {
+		cur = len(m.filter)
+	}
+	return m.filter[:cur] + "▮" + m.filter[cur:]
+}
+
+func (m model) renderCollecting(availH, w int) string {
+	frame := spinnerFrames[m.spinner%len(spinnerFrames)]
+	lines := append([]string{" " + frame + " coletando vagas..."}, m.collectLines...)
+	return m.renderInPanel(strings.Join(lines, "\n"), availH, w)
+}
+
+func (m model) renderNotice(w int) string {
+	return mutedStyle().Render(padLines(" "+m.status, w))
+}
+
+func (m model) renderLLM(availH, w int) string {
+	frame := spinnerFrames[m.spinner%len(spinnerFrames)]
+	var line string
+	if m.llmTotal > 0 {
+		line = fmt.Sprintf(" %s pontuando com LLM... %d/%d (cache nasce aqui)", frame, m.llmDone, m.llmTotal)
+	} else {
+		line = fmt.Sprintf(" %s pontuando com LLM...", frame)
+	}
+	return m.renderInPanel(line, availH, w)
+}
+
+func (m model) renderConfirm(availH, w int) string {
+	box := theme.Modal().Render(m.confirmText + "\n\n  [y] aplicar    [n] descartar (fica em cache)")
+	return lipgloss.Place(w, availH, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m model) renderLogs(availH, w int) string {
+	if len(m.log) == 0 {
+		return m.renderInPanel(" sem atividade ainda. rode c (collect) ou n (notify)", availH, w)
+	}
+	inner := w - 4 // panel inner
+	if inner < 1 {
+		inner = 1
+	}
+	var sb strings.Builder
+	for i := len(m.log) - 1; i >= 0; i-- {
+		e := m.log[i]
+		sb.WriteString(fmt.Sprintf(" %s  %s\n", e.at.Format("02/01 15:04"), e.text))
+	}
+	content := wrapText(strings.TrimRight(sb.String(), "\n"), inner)
+	return m.renderInPanel(content, availH, w)
+}
+
+func (m model) detailWidth(w int) int {
+	dw := w * 40 / 100
+	if dw < detailMin {
+		dw = detailMin
+	}
+	if dw > detailMax {
+		dw = detailMax
+	}
+	if dw >= w-1 {
+		dw = w - 1
+	}
+	return dw
+}
+
+func (m model) renderJobs(availH, w int) string {
+	if w < 1 {
+		w = 1
+	}
+	if m.total == 0 {
+		if m.filter != "" {
+			return padToHeight(" nenhuma vaga casa com o filtro (esc p/ sair, ctrl+u p/ limpar)", availH)
+		}
+		if m.showVetoed {
+			return padToHeight(" nenhuma vaga vetada.", availH)
+		}
+		return padToHeight(" nenhuma vaga nova. pressione c para coletar", availH)
+	}
+	visible := availH / cardH
+	if visible < 1 {
+		visible = 1
+	}
+	if visible > m.total {
+		visible = m.total
+	}
+	start := m.cursor - visible/2
+	if start < 0 {
+		start = 0
+	}
+	if start+visible > m.total {
+		start = m.total - visible
+	}
+	blocks := make([]string, 0, visible)
+	for i := start; i < start+visible && i < m.total; i++ {
+		blocks = append(blocks, m.renderCard(i, w))
+	}
+	return padToHeight(strings.Join(blocks, "\n"), availH)
+}
+
+func (m model) renderCard(i, w int) string {
+	return m.renderCardJob(m.jobs[i], i == m.cursor, w)
+}
+
+// renderCardJob draws one 3-line job block: score+title, meta line (company ·
+// location · type · remoto), tags+deadline. The focused card gets a solid
+// full-width accent rectangle (like tabelakanban's selected cards); unselected
+// cards use plain background so colored score badges survive the ANSI stack.
+func (m model) renderCardJob(j Job, sel bool, w int) string {
+	title := j.Title
+	if title == "" {
+		title = "—"
+	}
+	score := fmt.Sprintf("%3d", j.Score)
+	marker := "▸"
+	if j.Vetoed {
+		marker = "✕"
+	}
+
+	var line1 string
+	if sel {
+		line1 = fmt.Sprintf("%s [%s] %s", marker, score, title)
+	} else {
+		line1 = marker + " " + m.scoreBadge(j) + " " + cardTitleStyle().Render(title)
+	}
+
+	var meta []string
+	for _, p := range []string{j.Company, j.Location, j.Type} {
+		if p != "" {
+			meta = append(meta, p)
+		}
+	}
+	if j.Remote {
+		meta = append(meta, "remoto")
+	}
+	line2 := "  " + strings.Join(meta, " · ")
+
+	line3 := "  "
+	if len(j.Tags) > 0 {
+		line3 += strings.Join(j.Tags, " ")
+	}
+	if j.Vetoed {
+		if line3 != "  " {
+			line3 += "   "
+		}
+		line3 += "vetada"
+	}
+	if j.Deadline != "" {
+		if line3 != "  " {
+			line3 += "   "
+		}
+		line3 += "vence: " + j.Deadline
+	}
+
+	if sel {
+		s := selCardStyle()
+		return lipgloss.JoinVertical(lipgloss.Left,
+			s.Render(padLines(line1, w)),
+			s.Render(padLines(line2, w)),
+			s.Render(padLines(line3, w)),
+		)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		padLines(line1, w),
+		dimStyle().Render(padLines(line2, w)),
+		mutedStyle().Render(padLines(line3, w)),
+	)
+}
+
+func (m model) scoreBadge(j Job) string {
+	return m.scoreBadgeForScore(j.Score).Render(fmt.Sprintf("[%3d]", j.Score))
+}
+
+func (m model) scoreBadgeForScore(score int) lipgloss.Style {
+	switch {
+	case score >= 80:
+		return successStyle()
+	case score >= 60:
+		return warningStyle()
+	default:
+		return dimStyle()
+	}
+}
+
+func (m model) renderDetail(dw, availH int) string {
+	j := m.jobs[m.cursor]
+	inner := dw - 4 // border (2) + padding (2)
+	if inner < 10 {
+		inner = 10
+	}
+
+	var plain []string
+	plain = append(plain, j.Title)
+
+	var meta []string
+	for _, p := range []string{j.Company, j.Location} {
+		if p != "" {
+			meta = append(meta, p)
+		}
+	}
+	plain = append(plain, strings.Join(meta, " · "))
+
+	src := j.Source
+	if j.Remote {
+		src += " · remoto"
+	}
+	detail := "Fonte: " + src
+	if j.Type != "" {
+		detail += " | Tipo: " + j.Type
+	}
+	if j.Deadline != "" {
+		detail += " | Vence: " + j.Deadline
+	}
+	if j.Salary != "" {
+		detail += " | Salário: " + j.Salary
+	}
+	plain = append(plain, detail)
+	plain = append(plain, fmt.Sprintf("Score: %d/100", j.Score))
+	plain = append(plain, "Tags: "+strings.Join(j.Tags, ", "))
+	plain = append(plain, "")
+	switch {
+	case j.Description != "":
+		plain = append(plain, j.Description)
+	case j.Raw != "" && j.Source != "programathor":
+		plain = append(plain, j.Raw)
+	case j.Source == "programathor":
+		if m.detailLoading == j.Source+":"+j.ID {
+			plain = append(plain, "carregando descrição...")
+		} else {
+			plain = append(plain, "(descrição carrega automaticamente ao focar)")
+		}
+	default:
+		plain = append(plain, "(sem descrição)")
+	}
+
+	ls := strings.Split(wrapText(strings.Join(plain, "\n"), inner), "\n")
+	scoreStyle := m.scoreBadgeForScore(j.Score)
+	for i, l := range ls {
+		switch {
+		case i == 0:
+			ls[i] = titleStyle().Render(l)
+		case i == 1:
+			ls[i] = dimStyle().Render(l)
+		case strings.HasPrefix(l, "Fonte:"):
+			ls[i] = dimStyle().Render(l)
+		case strings.HasPrefix(l, "Tags:"):
+			ls[i] = mutedStyle().Render(l)
+		case strings.HasPrefix(l, "Score:"):
+			ls[i] = scoreStyle.Render(l)
+		}
+	}
+	content := padToHeight(strings.Join(ls, "\n"), availH-2)
+	return panelStyle(true).Render(padLines(content, inner))
 }
 
 func (m model) renderFooter(w int) string {
-	profileStr := m.profile
-	if m.total > 0 {
-		return fmt.Sprintf(" %d vagas · perfil: %s · j/k navegar · enter abrir · c coletar · n notificar · q sair", m.total, profileStr)
+	// footerStyle pads 2 columns each side, so content is limited to w-4.
+	inner := w - 4
+	if inner < 1 {
+		inner = 1
 	}
-	return fmt.Sprintf(" perfil: %s · c coletar · q sair", profileStr)
+	parts := []string{fmt.Sprintf("%d vagas", m.total), "perfil: " + m.profile}
+	if m.filter != "" {
+		parts[0] = fmt.Sprintf("%d/%d vagas", m.total, len(m.all))
+	}
+	if m.showDetail {
+		parts = append(parts, "detalhes")
+	}
+	if m.showVetoed {
+		parts = append(parts, "vetadas")
+	}
+	if m.tierView {
+		parts = append(parts, "faixas")
+	}
+	left := " " + strings.Join(parts, " · ")
+	hints := "/filtro · o detalhe · t faixas · ctrl+e perfil · x vetar · m llm · c coleta · q"
+
+	text := left
+	if l, h := len([]rune(left)), len([]rune(hints)); l+h+2 <= inner {
+		text = left + strings.Repeat(" ", inner-l-h) + hints
+	} else if l+2 > inner {
+		text = truncate(left, inner-1) + "…"
+	} else {
+		text = left + " " + truncate(hints, inner-l-3) + "…"
+	}
+	return text
 }

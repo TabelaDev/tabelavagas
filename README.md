@@ -19,11 +19,44 @@ Flags comuns:
 
 | Flag          | Descrição                                       | Default |
 | ------------- | ----------------------------------------------- | ------- |
-| `--min N`     | cutoff de score (override do `min_score`, no scoring) | —  |
+| `--min N`     | score mínimo pra entrar no `top`/`notify`       | —       |
 | `--profile X` | perfil de scoring (`dev`, `data`, `fullstack`)  | `dev`   |
 | `--scorer X`  | `heuristic` ou `llm`                            | —       |
 | `--only-new`  | só vagas ainda não notificadas (`top`/`notify`/`all`) | —    |
 | `--dry`       | mostra o que faria sem gravar                   | —       |
+
+## TUI
+
+`tabelavagas` abre a TUI: lista de vagas novas (ainda não notificadas), cada
+uma num card de 3 linhas (score+título, empresa/local/tipo, tags+deadline).
+A vaga focada fica com destaque full-width na cor de acento.
+
+| Tecla      | Ação                                        |
+| ---------- | ------------------------------------------- |
+| `j`/`k`    | navega (também setas, `g`/`G`, `pgup`/`pgdn`) |
+| `h`/`l`    | troca de coluna na visão de faixas (`t`)    |
+| `/`        | abre filtro live — digita e a lista reduz   |
+| `esc`      | sai do filtro (`ctrl+u` limpa)              |
+| `o`        | abre/fecha painel de detalhes               |
+| `x`        | vetar/desvetar a vaga focada (some da lista) |
+| `V`        | mostrar/esconder as vagas vetadas           |
+| `t`        | visão de faixas: colunas 80-100 · 60-79 · <60 |
+| `ctrl+e`   | abre/fecha sidebar de perfis (aplica e re-scoreia) |
+| `L`        | log de atividade (collect/veto/notify/perfil) |
+| `enter`    | abre a vaga no navegador                    |
+| `c`        | coleta com spinner + progresso por fonte e re-scoreia |
+| `n`        | notifica as top 5 via DMS                    |
+| `r`        | recarrega do SQLite                         |
+| `q`        | sai                                        |
+
+A linha entre o corpo e o footer é a barra de status: feedback transitório
+(collect, veto, reload) que some sozinho depois de 3s. Vagas vetadas não
+entram no `top`/`notify` do CLI e ficam marcadas com `✕` quando visíveis.
+
+Filtro: tokens separados por espaço, todos combinam (AND). `remote`/`onsite`
+(modo de trabalho), `score:70` (mínimo), `src:remotive` (fonte), `tipo:junior`
+(nível/contrato), e qualquer palavra é busca por substring no título/empresa/
+tags. Ex: `python remote score:60`.
 
 ## Fontes: API vs scraping
 

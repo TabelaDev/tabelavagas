@@ -86,36 +86,34 @@ func (p *programathorCollector) parseCard(s *goquery.Selection, href string) Job
 	// Strip any leftover badge text from title
 	title = cleanTitle(title)
 
-	// Company, location, salary, type — from spans with icons
+	// Company, location, salary, type and tags come from the card's icon
+	// spans. Single pass: each span is classified into exactly one bucket.
 	var company, location, salary, companyType string
 	var isRemote bool
+	var tags []string
 
-	s.Find("span").Each(func(_ int, sp *goquery.Selection) {
-		text := strings.TrimSpace(sp.Text())
-		if strings.Contains(text, "fa-briefcase") || sp.HasClass("fa-briefcase") {
-			company = strings.TrimSpace(strings.ReplaceAll(text, "fa-briefcase", ""))
-		}
-		if strings.Contains(text, "fa-map-marker") || strings.Contains(text, "fa-building") || strings.Contains(text, "fa-money") {
-			// These are icon + text spans
-		}
-	})
-
-	// Extract from the cell-list-content-icon section
-	icons := s.Find(".cell-list-content-icon span")
-	icons.Each(func(_ int, sp *goquery.Selection) {
+	s.Find(".cell-list-content-icon span").Each(func(_ int, sp *goquery.Selection) {
+		// The Font Awesome icon lives in the <i> child (or the span itself);
+		// match on its class, not on the span text which is the label
+		// (e.g. "Almeida Kruger", "Paraná (Presencial)", "Até R$2.500").
+		icon := sp.AttrOr("class", "") + " " + sp.Find("i").AttrOr("class", "")
 		text := strings.TrimSpace(sp.Text())
 		switch {
-		case strings.Contains(text, "briefcase"):
-			company = strings.TrimSpace(strings.TrimPrefix(text, "\uf0b1"))
-		case strings.Contains(text, "map-marker") || strings.Contains(text, "map-pin"):
-			location = strings.TrimSpace(strings.TrimPrefix(text, "\uf3c5"))
-			if strings.Contains(strings.ToLower(location), "presencial") || strings.Contains(strings.ToLower(text), "presencial") {
+		case strings.Contains(icon, "briefcase"):
+			company = text
+		case strings.Contains(icon, "map-marker") || strings.Contains(icon, "map-pin"):
+			location = strings.TrimSpace(strings.ReplaceAll(text, "(Presencial)", ""))
+			if strings.Contains(strings.ToLower(text), "presencial") {
 				isRemote = false
 			}
-		case strings.Contains(text, "building"):
-			companyType = strings.TrimSpace(strings.TrimPrefix(text, "\uf1ad"))
-		case strings.Contains(text, "money"):
-			salary = strings.TrimSpace(strings.TrimPrefix(text, "\uf571"))
+		case strings.Contains(icon, "building"):
+			companyType = text
+		case strings.Contains(icon, "money"):
+			salary = text
+		default:
+			if isTagText(text) {
+				tags = append(tags, text)
+			}
 		}
 	})
 
@@ -131,28 +129,6 @@ func (p *programathorCollector) parseCard(s *goquery.Selection, href string) Job
 		isRemote = false
 	}
 
-	// Extract tags/skills
-	var tags []string
-	s.Find(".cell-list-content-icon span").Each(func(_ int, sp *goquery.Selection) {
-		text := strings.TrimSpace(sp.Text())
-		// Tags are the short skill names (Python, React, etc.)
-		if len(text) > 0 && len(text) < 30 && !strings.Contains(text, "fa-") &&
-			!strings.Contains(text, "fa ") &&
-			text != company && text != location && text != salary && text != companyType {
-			// Filter out non-tag items
-			if !strings.Contains(text, "Remoto") && !strings.Contains(text, "Presencial") &&
-				!strings.Contains(text, "CLT") && !strings.Contains(text, "PJ") &&
-				!strings.Contains(text, "Júnior") && !strings.Contains(text, "Pleno") &&
-				!strings.Contains(text, "Sênior") && !strings.Contains(text, "Estágio") &&
-				!strings.Contains(text, "Até") && !strings.Contains(text, "Startup") &&
-				!strings.Contains(text, "Grande empresa") && !strings.Contains(text, "Pequena") &&
-				!strings.Contains(text, "Aceito") && !strings.Contains(text, "Não") &&
-				!strings.Contains(text, "Aceita") {
-				tags = append(tags, text)
-			}
-		}
-	})
-
 	// Clean up location
 	if location == "" {
 		if isRemote {
@@ -160,13 +136,15 @@ func (p *programathorCollector) parseCard(s *goquery.Selection, href string) Job
 		}
 	}
 
-	raw := strings.Join(tags, " ")
-	if salary != "" {
-		raw += " " + salary
+	// Raw carries only the non-tag extras (salary, company type); skills live
+	// in Tags so the scorer doesn't see the same keyword twice.
+	var rawParts []string
+	for _, p := range []string{salary, companyType} {
+		if p != "" {
+			rawParts = append(rawParts, p)
+		}
 	}
-	if companyType != "" {
-		raw += " " + companyType
-	}
+	raw := strings.Join(rawParts, " ")
 
 	return Job{
 		Source:   "programathor",
@@ -176,9 +154,56 @@ func (p *programathorCollector) parseCard(s *goquery.Selection, href string) Job
 		Company:  company,
 		Location: location,
 		Remote:   isRemote,
+		Salary:   salary,
 		Tags:     tags,
 		Raw:      raw,
 	}
+}
+
+// programathorDetail fetches a job detail page and extracts the salary range
+// and the description (Atividades e Responsabilidades + Requisitos). Called
+// lazily (e.g. by the TUI detail panel), not during collect.
+func programathorDetail(url string) (salary, description string, err error) {
+	resp, err := clientGet(url)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", "", fmt.Errorf("http %d", resp.StatusCode)
+	}
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Salary: "<span class=icon-offer>…</span> Salário: Até R$4.000"
+	if p := doc.Find("p:contains('Salário')").First(); p.Length() > 0 {
+		salary = strings.TrimPrefix(strings.TrimSpace(p.Text()), "Salário:")
+		salary = strings.TrimSpace(salary)
+	}
+
+	// Description: the <h3> sections "Atividades e Responsabilidades" and
+	// "Requisitos", capturing text until the next <h3>.
+	var parts []string
+	doc.Find(".line-height-2-4 h3").Each(func(_ int, h3 *goquery.Selection) {
+		title := strings.TrimSpace(h3.Text())
+		if title != "Atividades e Responsabilidades" && title != "Requisitos" {
+			return
+		}
+		next := h3.Next()
+		for next.Length() > 0 {
+			if next.Is("h3") {
+				break
+			}
+			if t := strings.TrimSpace(next.Text()); t != "" {
+				parts = append(parts, t)
+			}
+			next = next.Next()
+		}
+	})
+	description = strings.TrimSpace(strings.Join(parts, "\n"))
+	return salary, description, nil
 }
 
 // extractID pulls the numeric ID from /jobs/<id>-<slug>
@@ -189,6 +214,28 @@ func extractID(href string) string {
 	}
 	idStr, _, _ := strings.Cut(after, "-")
 	return idStr
+}
+
+// isTagText reports whether a card span is a skill tag rather than a
+// company/location/salary/level fragment.
+func isTagText(text string) bool {
+	t := strings.ToLower(text)
+	if text == "" || len(text) >= 30 {
+		return false
+	}
+	if strings.Contains(text, "fa-") || strings.Contains(text, "fa ") {
+		return false
+	}
+	for _, frag := range []string{
+		"remoto", "presencial", "clt", "pj", "júnior", "junior", "pleno",
+		"sênior", "senior", "estágio", "estagio", "até", "startup",
+		"grande empresa", "pequena", "aceito", "aceita", "não", "nao",
+	} {
+		if strings.Contains(t, frag) {
+			return false
+		}
+	}
+	return true
 }
 
 // cleanTitle removes leftover badge/fragment text from a job title.

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -144,6 +145,9 @@ func buildPrompt(j Job) string {
 	if j.Raw != "" {
 		sb.WriteString(fmt.Sprintf("Detalhes: %s\n", truncate(j.Raw, 500)))
 	}
+	if j.Description != "" {
+		sb.WriteString(fmt.Sprintf("Descrição: %s\n", truncate(j.Description, 1000)))
+	}
 	sb.WriteString("\nDê um score de 0 a 100 para o quão boa é esta vaga para um desenvolvedor júnior/pleno que foca em backend, dados, ML/IA, python, go, svelte, typescript.")
 	return sb.String()
 }
@@ -194,6 +198,9 @@ func jobHash(j Job) string {
 	h.Write([]byte(j.Title))
 	h.Write([]byte(j.Company))
 	h.Write([]byte(j.Location))
+	h.Write([]byte(strconv.FormatBool(j.Remote)))
+	h.Write([]byte(j.Type))
+	h.Write([]byte(j.Deadline))
 	h.Write([]byte(j.Raw))
 	for _, t := range j.Tags {
 		h.Write([]byte(t))

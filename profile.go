@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/BurntSushi/toml"
 )
@@ -85,4 +86,21 @@ func defaultProfile() string {
 		return p
 	}
 	return "dev"
+}
+
+// profileNames lists every available profile (built-in + custom), sorted.
+func profileNames() []string {
+	names := map[string]bool{}
+	for n := range builtinProfiles {
+		names[n] = true
+	}
+	for n := range loadCustomProfiles() {
+		names[n] = true
+	}
+	out := make([]string, 0, len(names))
+	for n := range names {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }

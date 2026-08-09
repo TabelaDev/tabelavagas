@@ -49,6 +49,43 @@ func TestParseCard_StripsBadgeSpans(t *testing.T) {
 	}
 }
 
+func TestParseCard_IconFields(t *testing.T) {
+	// Real Programathor markup: the Font Awesome icon lives in an <i> child,
+	// the span text is the label. Match on the icon class, not the text.
+	html := `<a href="/jobs/456-senior-dev">
+		<h3>Desenvolvedor(a) Full Stack Sênior</h3>
+		<div class="cell-list-content-icon">
+			<span><i class="fa fa-briefcase"></i>Almeida Kruger</span>
+			<span><i class="fas fa-map-marker-alt"></i>Paraná (Presencial)</span>
+			<span><i class="fa fa-building"></i>Grande empresa</span>
+			<span><i class="far fa-money-bill-alt"></i>Até R$2.500</span>
+			<span><i class="fas fa-tag"></i>Python</span>
+			<span><i class="fas fa-tag"></i>React</span>
+		</div>
+	</a>`
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := (&programathorCollector{}).parseCard(doc.Find("a").First(), "/jobs/456-senior-dev")
+
+	if j.Company != "Almeida Kruger" {
+		t.Errorf("Company = %q, want %q", j.Company, "Almeida Kruger")
+	}
+	if j.Location != "Paraná" {
+		t.Errorf("Location = %q, want %q (sem hint presencial)", j.Location, "Paraná")
+	}
+	if j.Remote {
+		t.Error("Remote should be false for a presencial job")
+	}
+	if len(j.Tags) != 2 || j.Tags[0] != "Python" || j.Tags[1] != "React" {
+		t.Errorf("Tags = %v, want [Python React]", j.Tags)
+	}
+	if strings.Contains(j.Raw, "Python") {
+		t.Errorf("Raw must not duplicate tags: %q", j.Raw)
+	}
+}
+
 func TestExtractID(t *testing.T) {
 	cases := map[string]string{
 		"/jobs/123-desenvolvedor": "123",
@@ -146,6 +183,29 @@ func TestParseFlags_OnlyNew(t *testing.T) {
 	}
 	if f.topN != 5 {
 		t.Errorf("topN = %d, want 5", f.topN)
+	}
+	if !f.topNSet {
+		t.Error("topNSet should be true when N is explicit")
+	}
+}
+
+func TestParseFlags_ExplicitTen(t *testing.T) {
+	// Regression: `notify 10` must keep 10, not fall back to the default.
+	f := parseFlags([]string{"10"})
+	if !f.topNSet || f.topN != 10 {
+		t.Errorf("topNSet=%v topN=%d, want true/10", f.topNSet, f.topN)
+	}
+}
+
+func TestNotifyCount(t *testing.T) {
+	if got := notifyCount(parseFlags(nil)); got != 5 {
+		t.Errorf("notifyCount(default) = %d, want 5", got)
+	}
+	if got := notifyCount(parseFlags([]string{"10"})); got != 10 {
+		t.Errorf("notifyCount(10) = %d, want 10", got)
+	}
+	if got := notifyCount(parseFlags([]string{"3"})); got != 3 {
+		t.Errorf("notifyCount(3) = %d, want 3", got)
 	}
 }
 

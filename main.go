@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -20,7 +21,7 @@ Uso:
   tabelavagas all [flags]      collect → rank → top → notify
 
 Flags comuns:
-  --min N         cutoff de score (override do min_score do perfil, no scoring)
+  --min N         score mínimo pra entrar no top/notify
   --profile NAME  perfil de scoring (default: dev)
   --scorer TYPE   heuristic | llm (default: heuristic)
   --only-new      só vagas ainda não notificadas (top/notify/all)
@@ -45,6 +46,7 @@ type cmdFlags struct {
 	scorer  string
 	dry     bool
 	topN    int
+	topNSet bool
 	onlyNew bool
 }
 
@@ -77,8 +79,9 @@ func parseFlags(args []string) cmdFlags {
 		default:
 			// first non-flag arg is the positional (N for top/notify)
 			n, err := strconv.Atoi(args[i])
-			if err == nil && f.topN == 10 {
+			if err == nil && !f.topNSet {
 				f.topN = n
+				f.topNSet = true
 			}
 		}
 		i++
@@ -117,11 +120,7 @@ func main() {
 		}
 		printJobs(jobs)
 	case "notify":
-		n := f.topN
-		if n == 10 {
-			n = 5
-		}
-		f.topN = n
+		f.topN = notifyCount(f)
 		jobs, err := runTop(f)
 		if err != nil {
 			fatal(err)
@@ -193,22 +192,80 @@ func runRank(f cmdFlags) error {
 			return err
 		}
 		fmt.Fprintf(stdout(), "dry-run: %d vagas seriam re-scoreadas com %s\n", len(jobs), f.scorer)
-		for i, j := range jobs {
-			if i >= 20 {
-				fmt.Fprintf(stdout(), "  ... e mais %d\n", len(jobs)-20)
-				break
-			}
+		// Score everything (so LLM results are cached for the real run),
+		// but only print the first 20 deltas.
+		shown := 0
+		for _, j := range jobs {
 			newScore := sc.Score(j)
+			if shown >= 20 {
+				continue
+			}
 			delta := newScore - j.Score
 			sign := "+"
 			if delta < 0 {
 				sign = ""
 			}
 			fmt.Fprintf(stdout(), "  [%3d→%3d %s%d] %s\n", j.Score, newScore, sign, delta, j.Title)
+			shown++
+		}
+		if len(jobs) > 20 {
+			fmt.Fprintf(stdout(), "  ... e mais %d\n", len(jobs)-20)
+		}
+		if f.scorer == "llm" {
+			fmt.Fprintln(stdout(), "scores LLM ficaram em cache. rode `tabelavagas rank --scorer llm` pra aplicar (pede confirmação).")
 		}
 		return nil
 	}
+
+	if f.scorer == "llm" {
+		jobs, err := scoreAllLLM(store, sc)
+		if err != nil {
+			return err
+		}
+		if !confirmApplyLLM(len(jobs)) {
+			fmt.Fprintln(stdout(), "scores LLM ficaram em cache; score atual não mudou.")
+			return nil
+		}
+		if err := store.applyScores(jobs); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout(), "rank: %d vagas re-scoreadas com LLM\n", len(jobs))
+		return nil
+	}
+
 	return scoreAll(store, sc)
+}
+
+// confirmApplyLLM asks before overwriting the active score with LLM scores.
+// Non-interactive invocations (cron, pipelines) apply without asking.
+func confirmApplyLLM(n int) bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return true
+	}
+	fmt.Fprintf(os.Stderr, "aplicar scores LLM em %d vagas? [y/N] ", n)
+	var ans string
+	fmt.Fscanln(os.Stdin, &ans)
+	return strings.EqualFold(strings.TrimSpace(ans), "y") || strings.EqualFold(strings.TrimSpace(ans), "yes")
+}
+
+// notifyCount returns how many jobs notify should deliver: the explicit N if
+// given, otherwise the default (5).
+func notifyCount(f cmdFlags) int {
+	if f.topNSet {
+		return f.topN
+	}
+	return 5
+}
+
+// rescoreProfile re-scores every stored job using the heuristic profile.
+func rescoreProfile(name string) error {
+	store, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer store.close()
+	return scoreAll(store, buildScorer(cmdFlags{profile: name}, store))
 }
 
 func runTop(f cmdFlags) ([]Job, error) {
@@ -221,8 +278,5 @@ func runTop(f cmdFlags) ([]Job, error) {
 	if n <= 0 {
 		n = 10
 	}
-	if f.onlyNew {
-		return store.topUnnotified(n)
-	}
-	return store.top(n)
+	return store.topFiltered(n, f.min, f.onlyNew, false)
 }

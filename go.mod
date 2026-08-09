@@ -7,7 +7,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/ianptkcs/tabelatuiui v0.1.0
+	github.com/ianptkcs/tabelatuiui v0.1.1-0.20260806194054-d2b572eeec24
 	modernc.org/sqlite v1.56.0
 )
 

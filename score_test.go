@@ -157,3 +157,20 @@ func TestJobHash_SameJob(t *testing.T) {
 		t.Error("same job should have same hash")
 	}
 }
+
+func TestJobHash_ScoringRelevantFields(t *testing.T) {
+	base := Job{Source: "remotive", ID: "1", Title: "dev"}
+
+	for _, mutate := range []struct {
+		name string
+		to   Job
+	}{
+		{"remote", func() Job { j := base; j.Remote = true; return j }()},
+		{"type", func() Job { j := base; j.Type = "clt"; return j }()},
+		{"deadline", func() Job { j := base; j.Deadline = "2026-09-01"; return j }()},
+	} {
+		if jobHash(base) == jobHash(mutate.to) {
+			t.Errorf("jobHash should differ when %s changes (cache staleness)", mutate.name)
+		}
+	}
+}
