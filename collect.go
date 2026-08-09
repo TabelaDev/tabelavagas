@@ -72,10 +72,15 @@ func runCollectProgress(prog collectProgressFunc) (int, error) {
 }
 
 func allCollectors() []collector {
-	return []collector{
+	cols := []collector{
 		&remotiveCollector{},
 		&programathorCollector{},
 	}
+	// Per-company API boards are opt-in via ~/.config/tabelavagas/sources.toml.
+	if companies := loadCompanies("greenhouse"); len(companies) > 0 {
+		cols = append(cols, &greenhouseCollector{companies: companies})
+	}
+	return cols
 }
 
 // printSources lists each configured source with its kind (api vs scraping).

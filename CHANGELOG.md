@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Fonte `greenhouse` (boards-api.greenhouse.io, API pública sem auth) com
+  lista de empresas configurável em `~/.config/tabelavagas/sources.toml`
+- Removida a fonte `gupy` (token inviável sem plano Premium/Enterprise)
 - TUI elaborada: cards de 3 linhas (score+título, empresa/local/tipo, tags+
   deadline), painel de detalhes (`o`), filtro live (`/` com tokens `remote`,
   `score:NN`, `src:NOME`, `tipo:...` e busca por palavra), destaque da vaga

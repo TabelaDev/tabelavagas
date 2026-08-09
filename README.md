@@ -66,10 +66,24 @@ Cada fonte é transparente quanto ao tipo; `tabelavagas sources` mostra:
 | ------------ | ---------- | ----------------------------------------------------------------- |
 | remotive     | `api`      | JSON público documentado (remotive.com/api), sem auth             |
 | programathor | `scraping` | HTML server-rendered parseado via goquery                         |
+| greenhouse   | `api`      | boards-api.greenhouse.io (JSON público, sem auth) — por empresa   |
 
 - **api**: dado estruturado de endpoint oficial. Quebra = fornecedor mudou o contrato.
 - **scraping**: parse de HTML/server-rendered — pode quebrar quando o site muda.
   Por isso são *best-effort*: fonte ruim vira aviso no stderr e não derruba a coleta.
+
+### Fontes por empresa (Greenhouse)
+
+`greenhouse` é por-empresa: crie `~/.config/tabelavagas/sources.toml` com as
+empresas que usam o Greenhouse (sem auth, públicas):
+
+```toml
+[greenhouse]
+companies = ["gitlab", "vercel", "stripe", "airtable"]
+```
+
+Sem o arquivo (ou sem a seção), a fonte não roda. O dedup é por
+`greenhouse:<empresa>-<id>`, então empresas diferentes não colidem.
 
 ## Como instalar
 
