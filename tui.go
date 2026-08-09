@@ -1173,7 +1173,7 @@ func (m model) renderCardJob(j Job, sel bool, w int) string {
 	if title == "" {
 		title = "—"
 	}
-	score := fmt.Sprintf("%3d", j.Score)
+	score := fmt.Sprintf("%d", j.Score)
 	marker := "▸"
 	if j.Vetoed {
 		marker = "✕"
@@ -1232,7 +1232,7 @@ func (m model) renderCardJob(j Job, sel bool, w int) string {
 }
 
 func (m model) scoreBadge(j Job) string {
-	return m.scoreBadgeForScore(j.Score).Render(fmt.Sprintf("[%3d]", j.Score))
+	return m.scoreBadgeForScore(j.Score).Render(fmt.Sprintf("[%d]", j.Score))
 }
 
 func (m model) scoreBadgeForScore(score int) lipgloss.Style {
