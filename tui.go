@@ -80,9 +80,10 @@ type model struct {
 	confirmText   string
 	detailLoading string // "source:id" of the job whose detail is being fetched
 
-	// helpModal is the "?" overlay listing every keybinding — declared here
-	// (not per-update) so its scroll position survives toggles.
-	helpModal *tuiui.HelpModal
+	// helpModal is the "?" overlay listing every keybinding; settingsModal is
+	// the "," overlay that lets the user rebind them. Both read from reg.
+	helpModal     *tuiui.HelpModal
+	settingsModal *tuiui.SettingsModal
 }
 
 type jobsLoadedMsg struct {
@@ -147,24 +148,30 @@ func newModel() model {
 			break
 		}
 	}
+	_ = reg.Load()
 	return model{
 		profile:    defaultProfile(),
 		profiles:   profiles,
 		sidebarIdx: idx,
 		helpModal: tuiui.NewHelpModal(
 			tuiui.HelpSection{
-				Title:    "Navegação",
-				Bindings: []tuiui.Binding{keyMoveDown, keyMoveUp, keyMoveLeft, keyMoveRight, keyTop, keyBottom, keyPageUp, keyPageDown, keyOpen},
+				Title: "Navegação",
+				BindingsFn: func() []tuiui.Binding {
+					return bindingsOf("move-down", "move-up", "move-left", "move-right", "top", "bottom", "page-up", "page-down", "open")
+				},
 			},
 			tuiui.HelpSection{
-				Title:    "Ações",
-				Bindings: []tuiui.Binding{keyFilter, keyDetail, keyTiers, keySidebar, keyVeto, keyShowVeto, keyCollect, keyNotify, keyLLM, keyLogs, keyRefresh},
+				Title: "Ações",
+				BindingsFn: func() []tuiui.Binding {
+					return bindingsOf("filter", "detail", "tiers", "sidebar", "veto", "show-veto", "collect", "notify", "llm", "logs", "refresh")
+				},
 			},
 			tuiui.HelpSection{
-				Title:    "Sessão",
-				Bindings: []tuiui.Binding{keyHelp, keyQuit},
+				Title:      "Sessão",
+				BindingsFn: func() []tuiui.Binding { return bindingsOf("help", "settings", "quit") },
 			},
 		),
+		settingsModal: tuiui.NewSettingsModal(reg),
 	}
 }
 
@@ -212,6 +219,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.helpModal.SetSize(msg.Width, msg.Height)
+		m.settingsModal.SetSize(msg.Width, msg.Height)
 		return m, nil
 
 	case jobsLoadedMsg:
@@ -329,8 +337,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// The help modal swallows all keys while it's open — the app must
-		// not act on them (so "q" closes the modal instead of quitting).
+		// The settings/help modals swallow all keys while open — the app
+		// must not act on them (so "q" closes the modal instead of quitting).
+		if m.settingsModal.Update(msg) {
+			return m, nil
+		}
 		if m.helpModal.Update(msg) {
 			return m, nil
 		}
@@ -377,14 +388,17 @@ func (m model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, keyQuit):
+	case key.Matches(msg, resolve("quit")):
 		return m, tea.Quit
-	case key.Matches(msg, keyHelp):
+	case key.Matches(msg, resolve("help")):
 		m.helpModal.Toggle()
 		return m, nil
-	case key.Matches(msg, keySidebar):
+	case key.Matches(msg, resolve("settings")):
+		m.settingsModal.Toggle()
+		return m, nil
+	case key.Matches(msg, resolve("sidebar")):
 		m.sidebar = true
-	case key.Matches(msg, keyTiers):
+	case key.Matches(msg, resolve("tiers")):
 		m.tierView = !m.tierView
 		if m.tierView {
 			m.clampTierCursor()
@@ -394,54 +408,54 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 			}
 		}
-	case key.Matches(msg, keyLogs):
+	case key.Matches(msg, resolve("logs")):
 		m.mode = modeLogs
 		return m, m.loadActivityLog
-	case key.Matches(msg, keyFilter):
+	case key.Matches(msg, resolve("filter")):
 		m.mode = modeFilter
 		m.filterCur = len(m.filter)
-	case key.Matches(msg, keyDetail):
+	case key.Matches(msg, resolve("detail")):
 		if !m.tierView {
 			m.showDetail = !m.showDetail
 		}
-	case key.Matches(msg, keyVeto):
+	case key.Matches(msg, resolve("veto")):
 		if j, ok := m.focusedJob(); ok {
 			return m, func() tea.Msg { return m.runVetoToggle(j) }
 		}
-	case key.Matches(msg, keyShowVeto):
+	case key.Matches(msg, resolve("show-veto")):
 		m.showVetoed = !m.showVetoed
 		m.applyFilter()
 		if m.showVetoed {
 			return m.setStatus("mostrando vagas vetadas", true)
 		}
 		return m.setStatus("escondendo vagas vetadas", true)
-	case key.Matches(msg, keyMoveDown):
+	case key.Matches(msg, resolve("move-down")):
 		if m.tierView {
 			m.cursor++
 			m.clampTierCursor()
 		} else if m.cursor < m.total-1 {
 			m.cursor++
 		}
-	case key.Matches(msg, keyMoveUp):
+	case key.Matches(msg, resolve("move-up")):
 		if m.tierView {
 			m.cursor--
 			m.clampTierCursor()
 		} else if m.cursor > 0 {
 			m.cursor--
 		}
-	case key.Matches(msg, keyMoveLeft):
+	case key.Matches(msg, resolve("move-left")):
 		if m.tierView && m.colIdx > 0 {
 			m.colIdx--
 			m.clampTierCursor()
 		}
-	case key.Matches(msg, keyMoveRight):
+	case key.Matches(msg, resolve("move-right")):
 		if m.tierView && m.colIdx < 2 {
 			m.colIdx++
 			m.clampTierCursor()
 		}
-	case key.Matches(msg, keyTop):
+	case key.Matches(msg, resolve("top")):
 		m.cursor = 0
-	case key.Matches(msg, keyBottom):
+	case key.Matches(msg, resolve("bottom")):
 		if m.tierView {
 			b := m.tierGroups()
 			if m.colIdx < len(b) && len(b[m.colIdx].jobs) > 0 {
@@ -450,18 +464,18 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.total > 0 {
 			m.cursor = m.total - 1
 		}
-	case key.Matches(msg, keyPageUp):
+	case key.Matches(msg, resolve("page-up")):
 		m.cursor -= 10
 		m.clampCursor()
-	case key.Matches(msg, keyPageDown):
+	case key.Matches(msg, resolve("page-down")):
 		m.cursor += 10
 		m.clampCursor()
-	case key.Matches(msg, keyOpen):
+	case key.Matches(msg, resolve("open")):
 		if j, ok := m.focusedJob(); ok {
 			m = m.appendLog("open", j.Title)
 			return m, openURL(j.URL)
 		}
-	case key.Matches(msg, keyCollect):
+	case key.Matches(msg, resolve("collect")):
 		m.mode = modeCollecting
 		m.spinner = 0
 		m.collectLines = nil
@@ -469,14 +483,14 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.collectCh = make(chan string, 16)
 		go m.collectStream()
 		return m, m.collectDriver
-	case key.Matches(msg, keyRefresh):
+	case key.Matches(msg, resolve("refresh")):
 		nm, c := m.setStatus("recarregado", true)
 		return nm, tea.Batch(c, m.loadJobs)
-	case key.Matches(msg, keyNotify):
+	case key.Matches(msg, resolve("notify")):
 		if _, ok := m.focusedJob(); ok {
 			return m, m.runNotify
 		}
-	case key.Matches(msg, keyLLM):
+	case key.Matches(msg, resolve("llm")):
 		if os.Getenv("TABELAVAGAS_LLM_API_KEY") == "" {
 			return m.setStatus("chave LLM não definida (TABELAVAGAS_LLM_API_KEY)", false)
 		}
@@ -497,6 +511,9 @@ func (m model) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.helpModal.Toggle()
+		return m, nil
+	case ",":
+		m.settingsModal.Toggle()
 		return m, nil
 	case "ctrl+e", "esc", "l", "right":
 		m.sidebar = false
@@ -897,7 +914,7 @@ func (m model) View() string {
 	}
 
 	notice := m.renderNotice(w)
-	footer := tuiui.NewFooter(appKeymap...).
+	footer := tuiui.NewFooter(reg.Bindings()...).
 		Status(m.footerStatus()).
 		Render(w, theme)
 
@@ -908,6 +925,9 @@ func (m model) View() string {
 		notice,
 		footer,
 	)
+	if m.settingsModal.Visible() {
+		return m.settingsModal.View(theme)
+	}
 	if m.helpModal.Visible() {
 		return m.helpModal.View(theme)
 	}
@@ -1358,7 +1378,7 @@ func (m model) renderDetail(dw, availH int) string {
 
 // footerStatus is the left side of the footer bar: the dynamic state summary
 // (count, profile, which views are active). The right side (keybinding hints)
-// is generated from appKeymap by tuiui.Footer.
+// is generated from reg.Bindings() by tuiui.Footer.
 func (m model) footerStatus() string {
 	parts := []string{fmt.Sprintf("%d vagas", m.total), "perfil: " + m.profile}
 	if m.filter != "" {

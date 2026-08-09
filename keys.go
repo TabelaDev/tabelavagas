@@ -1,43 +1,55 @@
 package main
 
 import (
+	"path/filepath"
+
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/ianptkcs/tabelatuiui"
 )
 
-// tabelavagas' keybindings, declared once and shared by the key dispatch in
-// handleBodyKey/handleSidebarKey (key.Matches), the footer hints
-// (tuiui.Footer) and the help modal (tuiui.HelpModal) — the hints can never
-// drift out of sync with what Update actually matches.
-var (
-	keyQuit      = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "sair"))
-	keyHelp      = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keybindings"))
-	keyRefresh   = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "recarregar"))
-	keyFilter    = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filtro"))
-	keyMoveDown  = key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j", "próxima"))
-	keyMoveUp    = key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k", "anterior"))
-	keyMoveLeft  = key.NewBinding(key.WithKeys("h", "left"), key.WithHelp("h", "faixa esq"))
-	keyMoveRight = key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("l", "faixa dir"))
-	keyTop       = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "topo"))
-	keyBottom    = key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "fim"))
-	keyPageUp    = key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "página ↑"))
-	keyPageDown  = key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdn", "página ↓"))
-	keyOpen      = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "abrir URL"))
-	keyDetail    = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "detalhe"))
-	keyTiers     = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "faixas"))
-	keySidebar   = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "perfil"))
-	keyVeto      = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "vetar"))
-	keyShowVeto  = key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "vetadas"))
-	keyCollect   = key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "coletar"))
-	keyNotify    = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "notificar"))
-	keyLLM       = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "llm"))
-	keyLogs      = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logs"))
-)
+// reg is tabelavagas' single source of truth for keybindings: defaults
+// registered below, overrides persisted to ~/.config/tabelavagas/keybindings.json.
+// Resolve() returns the effective binding, shared by dispatch, footer and
+// help modal — a user rebind via the settings modal applies to all at once.
+var reg = tuiui.NewKeyRegistry(filepath.Join(tuiui.ConfigDir(), "tabelavagas", "keybindings.json"))
 
-// appKeymap is the full list of bindings the footer hints and the help modal
-// render from.
-var appKeymap = []key.Binding{
-	keyMoveDown, keyMoveUp, keyMoveLeft, keyMoveRight, keyTop, keyBottom,
-	keyPageUp, keyPageDown, keyOpen, keyDetail, keyTiers, keySidebar, keyVeto,
-	keyShowVeto, keyCollect, keyNotify, keyLLM, keyFilter, keyLogs, keyRefresh,
-	keyHelp, keyQuit,
+func init() {
+	reg.RegisterMany(
+		tuiui.Action{ID: "quit", Help: "sair", Keys: []string{"q", "ctrl+c"}},
+		tuiui.Action{ID: "help", Help: "keybindings", Keys: []string{"?"}},
+		tuiui.Action{ID: "settings", Help: "rebind keys", Keys: []string{","}},
+		tuiui.Action{ID: "refresh", Help: "recarregar", Keys: []string{"r"}},
+		tuiui.Action{ID: "filter", Help: "filtro", Keys: []string{"/"}},
+		tuiui.Action{ID: "move-down", Help: "próxima", Keys: []string{"j", "down"}, Label: "j"},
+		tuiui.Action{ID: "move-up", Help: "anterior", Keys: []string{"k", "up"}, Label: "k"},
+		tuiui.Action{ID: "move-left", Help: "faixa esq", Keys: []string{"h", "left"}, Label: "h"},
+		tuiui.Action{ID: "move-right", Help: "faixa dir", Keys: []string{"l", "right"}, Label: "l"},
+		tuiui.Action{ID: "top", Help: "topo", Keys: []string{"g", "home"}, Label: "g"},
+		tuiui.Action{ID: "bottom", Help: "fim", Keys: []string{"G", "end"}, Label: "G"},
+		tuiui.Action{ID: "page-up", Help: "página ↑", Keys: []string{"pgup"}},
+		tuiui.Action{ID: "page-down", Help: "página ↓", Keys: []string{"pgdown"}},
+		tuiui.Action{ID: "open", Help: "abrir URL", Keys: []string{"enter"}},
+		tuiui.Action{ID: "detail", Help: "detalhe", Keys: []string{"o"}},
+		tuiui.Action{ID: "tiers", Help: "faixas", Keys: []string{"t"}},
+		tuiui.Action{ID: "sidebar", Help: "perfil", Keys: []string{"ctrl+e"}},
+		tuiui.Action{ID: "veto", Help: "vetar", Keys: []string{"x"}},
+		tuiui.Action{ID: "show-veto", Help: "vetadas", Keys: []string{"V"}},
+		tuiui.Action{ID: "collect", Help: "coletar", Keys: []string{"c"}},
+		tuiui.Action{ID: "notify", Help: "notificar", Keys: []string{"n"}},
+		tuiui.Action{ID: "llm", Help: "llm", Keys: []string{"m"}},
+		tuiui.Action{ID: "logs", Help: "logs", Keys: []string{"L"}},
+	)
+}
+
+// resolve is a short alias so Update reads like the old named keys.
+func resolve(id string) key.Binding { return reg.Resolve(id) }
+
+// bindingsOf returns the resolved bindings for a list of action IDs — used by
+// the help modal's sections so they reflect rebinds live.
+func bindingsOf(ids ...string) []key.Binding {
+	out := make([]key.Binding, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, reg.Resolve(id))
+	}
+	return out
 }
