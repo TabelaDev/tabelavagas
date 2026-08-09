@@ -15,6 +15,16 @@ Abra uma [issue](../../issues/new/choose) usando o template apropriado.
    de abrir o PR.
 4. Abra o PR usando o template — descreva o quê e o porquê da mudança.
 
+## Segurança de secrets
+
+Tokens e chaves de API (`TABELAVAGAS_GUPY_TOKEN`, `TABELAVAGAS_LLM_API_KEY`)
+são lidos **somente de variáveis de ambiente** — nunca passe por flag, não
+hardcode, não commite. Um scan (gitleaks) roda no CI pra pegar vazamentos.
+
+- Coloque secrets em `.env` **fora** do repo (ignorado) ou no seu shell
+  (`set -Ux TABELAVAGAS_GUPY_TOKEN ...` no fish).
+- Se um secret vazar, considere-o comprometido e gere outro.
+
 ## Licença
 
 Ao contribuir, você concorda que sua contribuição será licenciada sob a
