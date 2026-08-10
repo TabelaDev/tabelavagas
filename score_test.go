@@ -170,6 +170,10 @@ func TestJobHash_ScoringRelevantFields(t *testing.T) {
 		{"remote", func() Job { j := base; j.Remote = true; return j }()},
 		{"type", func() Job { j := base; j.Type = "clt"; return j }()},
 		{"deadline", func() Job { j := base; j.Deadline = "2026-09-01"; return j }()},
+		// buildPrompt sends these two, so the cache key has to move when they
+		// do. setDetails fills Description in after the first sync.
+		{"description", func() Job { j := base; j.Description = "Vaga remota de backend"; return j }()},
+		{"salary", func() Job { j := base; j.Salary = "R$ 8.000"; return j }()},
 	} {
 		if jobHash(base) == jobHash(mutate.to) {
 			t.Errorf("jobHash should differ when %s changes (cache staleness)", mutate.name)

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -51,7 +50,7 @@ func (l *llmScorer) Score(j Job) int {
 	// Call LLM
 	score, err := l.callLLM(j)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "aviso: LLM score falhou para %s: %v\n", j.Title, err)
+		fmt.Fprintf(stderr(), "aviso: LLM score falhou para %s: %v\n", j.Title, err)
 		// Fallback to heuristic
 		sc := &heuristicScorer{opts: l.opts}
 		return sc.Score(j)
@@ -191,6 +190,10 @@ func parseLLMScore(content string) (int, error) {
 	return result.Score, nil
 }
 
+// jobHash is the cache key for an LLM score, so it has to cover exactly the
+// fields buildPrompt sends. Description and Salary were missing: setDetails
+// fetches the description lazily from the source page, and when it arrived the
+// hash did not change — the job kept the score computed without it, forever.
 func jobHash(j Job) string {
 	h := sha256.New()
 	h.Write([]byte(j.Source))
@@ -202,6 +205,8 @@ func jobHash(j Job) string {
 	h.Write([]byte(j.Type))
 	h.Write([]byte(j.Deadline))
 	h.Write([]byte(j.Raw))
+	h.Write([]byte(j.Description))
+	h.Write([]byte(j.Salary))
 	for _, t := range j.Tags {
 		h.Write([]byte(t))
 	}
