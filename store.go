@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -26,13 +28,22 @@ func openStore() (*Store, error) {
 }
 
 func openStoreAt(path string) (*Store, error) {
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("criar %s: %w", filepath.Dir(path), err)
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
+
+	// One connection: SQLite serializes writers anyway, and the LLM scorer now
+	// scores jobs from a worker pool, each caching its result. Letting the pool
+	// open several connections just turns that into SQLITE_BUSY.
+	db.SetMaxOpenConns(1)
+
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
+		db.Close()
 		return nil, err
 	}
 	return s, nil
@@ -111,7 +122,13 @@ func (s *Store) ensureColumn(table, col, decl string) error {
 	return err
 }
 
-// save inserts jobs that are not already present; returns inserts count.
+// save upserts jobs, returning how many rows were new.
+//
+// It used to be INSERT OR IGNORE, which meant a posting that changed after the
+// first sync — salary published later, deadline moved, title corrected — was
+// never updated. The conflict branch refreshes the volatile fields and
+// deliberately leaves notified, vetoed and both score columns alone: those are
+// the user's state, not the source's.
 func (s *Store) save(jobs []Job) (int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -119,24 +136,55 @@ func (s *Store) save(jobs []Job) (int, error) {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`INSERT OR IGNORE INTO jobs
+	stmt, err := tx.Prepare(`INSERT INTO jobs
 		(source, id, url, title, company, location, remote, type, deadline, salary, description, raw)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(source, id) DO UPDATE SET
+			url = excluded.url,
+			title = excluded.title,
+			company = excluded.company,
+			location = excluded.location,
+			remote = excluded.remote,
+			type = excluded.type,
+			deadline = excluded.deadline,
+			salary = excluded.salary,
+			description = excluded.description,
+			raw = excluded.raw
+		WHERE
+			jobs.url IS NOT excluded.url OR
+			jobs.title IS NOT excluded.title OR
+			jobs.company IS NOT excluded.company OR
+			jobs.location IS NOT excluded.location OR
+			jobs.remote IS NOT excluded.remote OR
+			jobs.type IS NOT excluded.type OR
+			jobs.deadline IS NOT excluded.deadline OR
+			jobs.salary IS NOT excluded.salary OR
+			jobs.description IS NOT excluded.description OR
+			jobs.raw IS NOT excluded.raw`)
 	if err != nil {
 		return 0, err
 	}
 	defer stmt.Close()
 
-	inserted := 0
-	for _, j := range jobs {
-		res, err := stmt.Exec(j.Source, j.ID, j.URL, j.Title, j.Company, j.Location, b2i(j.Remote), j.Type, j.Deadline, j.Salary, truncate(j.Description, 4000), truncate(j.Raw, 2000))
-		if err != nil {
-			return inserted, err
-		}
-		n, _ := res.RowsAffected()
-		inserted += int(n)
+	// RowsAffected counts updates too, so "new" is measured by how many rows
+	// the table gained rather than by how many statements touched something.
+	var before int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&before); err != nil {
+		return 0, err
 	}
-	return inserted, tx.Commit()
+
+	for _, j := range jobs {
+		if _, err := stmt.Exec(j.Source, j.ID, j.URL, j.Title, j.Company, j.Location, b2i(j.Remote), j.Type, j.Deadline, j.Salary, truncate(j.Description, 4000), truncate(j.Raw, 2000)); err != nil {
+			return 0, err
+		}
+	}
+
+	var after int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&after); err != nil {
+		return 0, err
+	}
+
+	return after - before, tx.Commit()
 }
 
 func b2i(b bool) int {
@@ -250,18 +298,59 @@ func scoreAllLLM(s *Store, sc Scorer) ([]Job, error) {
 	return scoreAllLLMProgress(s, sc, nil)
 }
 
-// scoreAllLLMProgress is scoreAllLLM with a per-job progress callback.
+// llmScoreWorkers bounds the fan-out of LLM scoring. Each Score is an HTTP
+// round trip with a 30s timeout, so scoring a few hundred stored jobs strictly
+// one at a time was effectively unusable; a small pool keeps it quick without
+// hammering the provider.
+const llmScoreWorkers = 6
+
+// scoreAllLLMProgress is scoreAllLLM with a per-job progress callback. Jobs are
+// scored concurrently, but each result is written back to its own slice slot,
+// so the caller still gets them in the original order.
 func scoreAllLLMProgress(s *Store, sc Scorer, onJob func(done, total int)) ([]Job, error) {
 	jobs, err := s.all()
 	if err != nil {
 		return nil, err
 	}
-	for i := range jobs {
-		jobs[i].Score = sc.Score(jobs[i])
-		if onJob != nil {
-			onJob(i+1, len(jobs))
-		}
+	if len(jobs) == 0 {
+		return jobs, nil
 	}
+
+	workers := min(llmScoreWorkers, len(jobs))
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		done    int
+		indexes = make(chan int)
+	)
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range indexes {
+				score := sc.Score(jobs[i])
+
+				mu.Lock()
+				jobs[i].Score = score
+				done++
+				current := done
+				mu.Unlock()
+
+				if onJob != nil {
+					onJob(current, len(jobs))
+				}
+			}
+		}()
+	}
+
+	for i := range jobs {
+		indexes <- i
+	}
+	close(indexes)
+	wg.Wait()
+
 	return jobs, nil
 }
 

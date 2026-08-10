@@ -232,3 +232,74 @@ func ids(jobs []Job) []string {
 	}
 	return out
 }
+
+// save used to be INSERT OR IGNORE, so a posting that changed after the first
+// sync kept its stale copy forever.
+func TestSaveUpdatesChangedPostings(t *testing.T) {
+	s := newTestStore(t)
+
+	first := Job{Source: "remotive", ID: "1", Title: "Dev Backend", URL: "u1", Deadline: "2026-09-01"}
+	if n, err := s.save([]Job{first}); err != nil || n != 1 {
+		t.Fatalf("primeira gravação: n=%d err=%v", n, err)
+	}
+
+	// Same posting, now with a salary and a moved deadline.
+	updated := first
+	updated.Salary = "R$ 8.000"
+	updated.Deadline = "2026-10-15"
+	n, err := s.save([]Job{updated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("um posting alterado não é uma vaga nova: n=%d", n)
+	}
+
+	all, err := s.all()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("esperava 1 linha, tem %d", len(all))
+	}
+	if all[0].Salary != "R$ 8.000" {
+		t.Errorf("salary não atualizou: %q", all[0].Salary)
+	}
+	if all[0].Deadline != "2026-10-15" {
+		t.Errorf("deadline não atualizou: %q", all[0].Deadline)
+	}
+}
+
+// The upsert must not touch the columns that hold the user's own decisions.
+func TestSavePreservesUserState(t *testing.T) {
+	s := newTestStore(t)
+
+	j := Job{Source: "remotive", ID: "1", Title: "Dev Backend", URL: "u1"}
+	if _, err := s.save([]Job{j}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.setVetoed(j.Source, j.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.markNotified([]Job{j}); err != nil {
+		t.Fatal(err)
+	}
+
+	changed := j
+	changed.Title = "Dev Backend Sênior"
+	if _, err := s.save([]Job{changed}); err != nil {
+		t.Fatal(err)
+	}
+
+	var vetoed, notified int
+	row := s.db.QueryRow(`SELECT vetoed, notified FROM jobs WHERE source = ? AND id = ?`, j.Source, j.ID)
+	if err := row.Scan(&vetoed, &notified); err != nil {
+		t.Fatal(err)
+	}
+	if vetoed != 1 {
+		t.Error("re-gravar a vaga apagou o veto do usuário")
+	}
+	if notified != 1 {
+		t.Error("re-gravar a vaga apagou a marca de notificada")
+	}
+}
