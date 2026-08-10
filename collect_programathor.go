@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -15,25 +16,32 @@ type programathorCollector struct{}
 func (p *programathorCollector) name() string { return "programathor" }
 func (p *programathorCollector) kind() string { return "scraping" }
 
+// maxPages caps the crawl; pageDelay keeps it from hammering the site.
+const (
+	maxPages  = 20
+	pageDelay = 400 * time.Millisecond
+)
+
 func (p *programathorCollector) collect() ([]Job, error) {
 	var all []Job
-	page := 1
-	for {
+	for page := 1; page <= maxPages; page++ {
+		if page > 1 {
+			time.Sleep(pageDelay)
+		}
 		jobs, err := p.fetchPage(page)
 		if err != nil {
 			if page == 1 {
 				return nil, err
 			}
-			break
+			// A mid-crawl failure used to break silently, so a partial crawl was
+			// indistinguishable from a complete one. Return what was collected
+			// alongside the error and let the caller report it as incomplete.
+			return all, fmt.Errorf("página %d (parcial: %d vagas): %w", page, len(all), err)
 		}
 		if len(jobs) == 0 {
 			break
 		}
 		all = append(all, jobs...)
-		page++
-		if page > 20 {
-			break
-		}
 	}
 	return all, nil
 }
