@@ -756,6 +756,16 @@ func (m model) runApplyProfile(name string) tea.Msg {
 // per source plus a final status into m.collectCh.
 func (m model) collectStream() {
 	ch := m.collectCh
+	// Per-source progress already goes through the callback, but loading the
+	// sources and profile config warns straight to the sinks on a malformed
+	// TOML — which would print over the alt-screen.
+	restore := captureOutput()
+	defer func() {
+		if out := restore(); out != "" {
+			persistActivity("erro", firstLine(out))
+		}
+	}()
+
 	total, err := runCollectProgress(func(source string, added int, cerr error) {
 		if cerr != nil {
 			ch <- "aviso " + source + ": " + cerr.Error()
@@ -829,10 +839,22 @@ func (m model) llmScoreStream() {
 		return
 	}
 	defer store.close()
+
+	// The LLM scorer warns once per job that fails. With a bad API key that is
+	// one line per job straight onto the alt-screen, so the output is captured
+	// and summarised into the activity log instead.
+	restore := captureOutput()
+
 	sc := buildScorer(cmdFlags{profile: m.profile, scorer: "llm"}, store)
 	jobs, err := scoreAllLLMProgress(store, sc, func(done, total int) {
 		ch <- llmScoreMsg{done: done, total: total}
 	})
+
+	if warnings := restore(); warnings != "" {
+		persistActivity("erro", fmt.Sprintf("llm: %d aviso(s) — %s",
+			strings.Count(warnings, "\n")+1, firstLine(warnings)))
+	}
+
 	if err != nil {
 		ch <- llmScoreMsg{err: err}
 	} else {
@@ -873,8 +895,23 @@ func (m model) runNotify() tea.Msg {
 	if len(jobs) == 0 {
 		return collectDoneMsg{kind: "notify", notice: "notify: nada a notificar"}
 	}
+	// notifyJobs writes to the output sinks — the dms fallback prints the whole
+	// list, and a failed dms call prints a warning. Under the alt-screen that
+	// lands on top of the rendered frame, so it goes to the activity log.
+	restore := captureOutput()
 	notifyJobs(jobs)
+	if out := restore(); out != "" {
+		persistActivity("notify", firstLine(out))
+	}
 	return collectDoneMsg{kind: "notify", n: len(jobs), notice: fmt.Sprintf("notify: %d vagas enviadas", len(jobs))}
+}
+
+// firstLine keeps a captured warning to a single status-bar-sized line.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func openURL(url string) tea.Cmd {

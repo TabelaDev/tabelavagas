@@ -56,7 +56,7 @@ func loadCustomProfiles() map[string]scoreOptions {
 	}
 	var cfg profilesConfig
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "aviso: %s inválido: %v\n", path, err)
+		fmt.Fprintf(stderr(), "aviso: %s inválido: %v\n", path, err)
 		return nil
 	}
 	out := make(map[string]scoreOptions, len(cfg.Profiles))

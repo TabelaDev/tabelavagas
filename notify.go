@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -43,10 +42,10 @@ func notifyJobs(jobs []Job) {
 		"--app", "tabelavagas",
 		"--timeout", "8000",
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout()
+	cmd.Stderr = stderr()
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "aviso: dms notify falhou: %v\n", err)
+		fmt.Fprintf(stderr(), "aviso: dms notify falhou: %v\n", err)
 		// Fallback to stdout
 		fmt.Fprintln(stdout(), "=== notify (fallback) ===")
 		for _, j := range jobs {
@@ -68,6 +67,6 @@ func markJobsNotified(jobs []Job) {
 	}
 	defer store.close()
 	if err := store.markNotified(jobs); err != nil {
-		fmt.Fprintf(os.Stderr, "aviso: falha ao marcar vagas notificadas: %v\n", err)
+		fmt.Fprintf(stderr(), "aviso: falha ao marcar vagas notificadas: %v\n", err)
 	}
 }

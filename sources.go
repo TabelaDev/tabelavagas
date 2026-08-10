@@ -37,7 +37,7 @@ func loadCompanies(provider string) []string {
 	}
 	var cfg sourcesConfig
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "aviso: %s inválido: %v\n", defaultSourcesPath(), err)
+		fmt.Fprintf(stderr(), "aviso: %s inválido: %v\n", defaultSourcesPath(), err)
 		return nil
 	}
 	switch provider {

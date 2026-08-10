@@ -5,16 +5,74 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"time"
 )
 
-func stderr() io.Writer { return os.Stderr }
-func stdout() io.Writer { return os.Stdout }
+// Output sinks. The CLI writes to the real streams; the TUI swaps them out
+// while a command runs, because anything printed under a Bubble Tea alt-screen
+// lands on top of the rendered frame and garbles it. collect, notify and the
+// LLM scorer run from both entry points, and the LLM scorer prints one warning
+// per job — an invalid API key used to turn the whole screen to soup.
+var (
+	outWriter io.Writer = os.Stdout
+	errWriter io.Writer = os.Stderr
+	writerMu  sync.Mutex
+)
+
+func stderr() io.Writer { return errWriter }
+func stdout() io.Writer { return outWriter }
+
+// lockedWriter serializes writes, since the LLM scorer fans out across workers.
+type lockedWriter struct {
+	mu  *sync.Mutex
+	buf *strings.Builder
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
+// captureOutput redirects both sinks into a buffer and returns a function that
+// restores them and yields whatever was written. The TUI uses it to turn stray
+// prints into activity-log lines instead of screen corruption.
+func captureOutput() func() string {
+	writerMu.Lock()
+	var buf strings.Builder
+	var mu sync.Mutex
+	prevOut, prevErr := outWriter, errWriter
+	outWriter = &lockedWriter{mu: &mu, buf: &buf}
+	errWriter = outWriter
+	writerMu.Unlock()
+
+	return func() string {
+		writerMu.Lock()
+		outWriter, errWriter = prevOut, prevErr
+		writerMu.Unlock()
+
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.TrimSpace(buf.String())
+	}
+}
+
+// userAgent identifies the collector to the sites it scrapes. Go's default
+// ("Go-http-client/1.1") is blocked by a good share of job boards.
+const userAgent = "tabelavagas/0.3 (+https://github.com/TabelaDev/tabelavagas)"
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 func clientGet(rawURL string) (*http.Response, error) {
-	return httpClient.Get(rawURL)
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.8")
+	return httpClient.Do(req)
 }
 
 // collectProgressFunc is called once per source with either the number of new
