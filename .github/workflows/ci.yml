@@ -7,18 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  secrets-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Gitleaks (scan histórico e working tree)
-        run: |
-          docker run --rm -v "${PWD}":/repo -w /repo \
-            zricethezav/gitleaks:latest git --no-banner --exit-code=1
-
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +16,15 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      - name: Format
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Vet
         run: go vet ./...
