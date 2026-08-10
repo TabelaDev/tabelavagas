@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Corrigido
+
+- **Score heurístico:** o casamento de keyword era `strings.Contains`, sem
+  fronteira de palavra, e o perfil `dev` tem entradas curtas — `"ia"` casava com
+  *experiência*, *tecnologia*, *ciência*, *dia*; `"ml"` com *html*; `"go"` com
+  *algoritmo*, *jogo*, *categoria*. Como os acertos saturam em 8 (+48 pontos),
+  quase toda descrição longa em PT-BR chegava perto do teto e o ranking virava
+  função do tamanho do texto. Agora o casamento é por token, sobre texto
+  normalizado sem acento.
+- `"júnior"` estava duplicado no perfil `dev` e contava dois acertos pro mesmo
+  termo; keyword repetida passou a contar uma vez só.
+- A TUI não é mais corrompida por escrita em stdout/stderr. O scorer LLM emite
+  um aviso por vaga que falha — com chave inválida, é uma linha por vaga em cima
+  do frame do Bubble Tea. `collect`, `notify` e o scoring capturam a saída e
+  mandam pro log de atividade.
+- Cache do LLM: `jobHash` não incluía `Description` nem `Salary`, mas o prompt
+  usa a descrição. Depois que `setDetails` preenchia a descrição, o score em
+  cache — calculado sem ela — continuava valendo pra sempre.
+- `save` virou upsert: anúncio que mudou depois da primeira coleta (salário
+  publicado, deadline movido, título corrigido) nunca era atualizado. Veto,
+  marca de notificado e os scores continuam intocados.
+- Coletor: `User-Agent` próprio (o default do Go é bloqueado por boa parte dos
+  sites), pausa entre páginas, e erro no meio da paginação deixou de sumir em
+  silêncio — antes um resultado parcial era indistinguível de coleta completa.
+- `openStoreAt` checa o erro de `MkdirAll` e fecha o handle quando a migração
+  falha.
+
+### Alterado
+
+- Scoring por LLM roda num pool de 6 workers. Cada chamada é um POST com timeout
+  de 30s; em série, algumas centenas de vagas tornavam o `rank --scorer llm`
+  inviável. A conexão do SQLite ficou limitada a 1 pra evitar `SQLITE_BUSY`.
+
 ### Added
 - Log de atividade persistente (tabela `activity`): collect, notify, veto,
   open, llm, profile — mantém os últimos 7 dias (prune automático) e a visão
