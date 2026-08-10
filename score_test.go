@@ -60,18 +60,20 @@ func TestHeuristicScore_CityBonus(t *testing.T) {
 func TestHeuristicScore_PresencialPenalty(t *testing.T) {
 	sc := &heuristicScorer{opts: builtinProfiles["dev"]}
 
-	// Same job, but one has "presencial" in title
-	// Note: "presencial" contains "ia" which is a keyword, so it gets a hit.
-	// The presencial penalty (-5) should still apply.
+	// Same job, but one says "presencial" in the title.
+	//
+	// This test used to expect s1+1, and the comment explained why: matching was
+	// substring-based, so "presencial" scored a hit for the "ia" keyword (+6)
+	// that all but cancelled the -5 penalty. With token matching the penalty
+	// stands on its own.
 	j1 := Job{Title: "python developer"}
 	j2 := Job{Title: "python developer presencial"}
 
 	s1 := sc.Score(j1)
 	s2 := sc.Score(j2)
 
-	// s2 should be s1 + 6 (ia hit) - 5 (presencial) = s1 + 1
-	if s2 != s1+1 {
-		t.Errorf("expected s2 = s1+1 (ia hit - presencial penalty), got s1=%d s2=%d", s1, s2)
+	if s2 != s1-5 {
+		t.Errorf("expected s2 = s1-5 (presencial penalty), got s1=%d s2=%d", s1, s2)
 	}
 }
 
@@ -172,5 +174,71 @@ func TestJobHash_ScoringRelevantFields(t *testing.T) {
 		if jobHash(base) == jobHash(mutate.to) {
 			t.Errorf("jobHash should differ when %s changes (cache staleness)", mutate.name)
 		}
+	}
+}
+
+func TestNormalizeText(t *testing.T) {
+	cases := map[string]string{
+		"Estágio em Ciência de Dados": " estagio em ciencia de dados ",
+		"Node.js / TypeScript":        " node js typescript ",
+		"":                            " ",
+	}
+	for in, want := range cases {
+		if got := normalizeText(in); got != want {
+			t.Errorf("normalizeText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The short entries in the dev profile ("ia", "ml", "ai", "go", "jr") are the
+// reason matching had to become token-based: every one of them is a substring
+// of a common Portuguese word.
+func TestKeywordsDoNotMatchInsideWords(t *testing.T) {
+	text := normalizeText("Temos experiência em tecnologia, ciência e algoritmos. Escrevemos HTML todo dia e jogamos na categoria certa.")
+	for _, kw := range []string{"ia", "ml", "ai", "go", "jr"} {
+		if matchesToken(text, kw) {
+			t.Errorf("keyword %q matched inside a word: %s", kw, text)
+		}
+	}
+	// ...but a standalone occurrence still counts.
+	if !matchesToken(normalizeText("Vaga de IA generativa"), "ia") {
+		t.Error(`"ia" should match when it stands alone`)
+	}
+	if !matchesToken(normalizeText("Backend em Go"), "go") {
+		t.Error(`"go" should match when it stands alone`)
+	}
+}
+
+// A long PT-BR description with no real match used to saturate the keyword cap
+// purely through substrings, landing near the top of the range.
+func TestNoiseDescriptionDoesNotSaturate(t *testing.T) {
+	sc := &heuristicScorer{opts: builtinProfiles["dev"]}
+	noise := Job{
+		Title: "Auxiliar administrativo",
+		Description: "Buscamos profissional com experiência em rotinas administrativas, " +
+			"conhecimento em tecnologia, ciência da organização, atendimento no dia a dia, " +
+			"categoria de documentos e diálogo com fornecedores. Jornada presencial.",
+	}
+	real := Job{Title: "Desenvolvedor Backend Python Júnior", Remote: true}
+
+	noiseScore := sc.Score(noise)
+	realScore := sc.Score(real)
+
+	if noiseScore >= realScore {
+		t.Errorf("noise (%d) should not outscore a real match (%d)", noiseScore, realScore)
+	}
+	if noiseScore > 30 {
+		t.Errorf("noise scored %d; substring matching used to push it near the cap", noiseScore)
+	}
+}
+
+// A term listed twice in a profile used to count twice toward the 8-hit cap.
+func TestDuplicateKeywordCountsOnce(t *testing.T) {
+	once := &heuristicScorer{opts: scoreOptions{Preferred: []string{"python"}}}
+	twice := &heuristicScorer{opts: scoreOptions{Preferred: []string{"python", "Python", "pythón"}}}
+
+	j := Job{Title: "Desenvolvedor Python"}
+	if a, b := once.Score(j), twice.Score(j); a != b {
+		t.Errorf("duplicate keywords changed the score: %d vs %d", a, b)
 	}
 }
