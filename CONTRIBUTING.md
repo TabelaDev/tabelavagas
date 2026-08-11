@@ -1,35 +1,56 @@
-# Contribuindo com o Tabelavagas
+# Contributing to Tabelavagas
 
-Obrigado pelo interesse. Antes de abrir um PR de código, dá uma olhada no
-`README.md` pra entender as decisões já tomadas.
+**English** · [Português](CONTRIBUTING.pt-BR.md)
 
-## Reportando bugs / sugerindo features
+Thanks for the interest. Before opening a code PR, read `README.md` to
+understand the decisions already made.
 
-Abra uma [issue](../../issues/new/choose) usando o template apropriado.
+## Reporting bugs / suggesting features
 
-## Enviando um PR
+Open an [issue](../../issues/new/choose) using the appropriate template.
 
-1. Fork o repositório.
-2. Crie uma branch a partir de `main`.
-3. Rode `go vet ./...`, `go test ./...` e `go build ./...` localmente antes
-   de abrir o PR.
-4. Abra o PR usando o template — descreva o quê e o porquê da mudança.
+## Sending a PR
 
-## Segurança de secrets
+1. Fork the repository.
+2. Create a branch off `main`.
+3. Run `go vet ./...`, `go test ./...` and `go build ./...` locally before
+   opening the PR.
+4. Open the PR using the template — describe the what and the why of the
+   change.
 
-Tokens e chaves de API (`TABELAVAGAS_LLM_API_KEY`)
-são lidos **somente de variáveis de ambiente** — nunca passe por flag, não
-hardcode, não commite. Um scan (gitleaks) roda no CI pra pegar vazamentos.
+## Language
 
-- Coloque secrets em `.env` **fora** do repo (ignorado) ou no seu shell
-  (`set -Ux TABELAVAGAS_LLM_API_KEY ...` no fish).
-- Se um secret vazar, considere-o comprometido e gere outro.
+The convention across every TabelaDev project, so that nothing has to be
+decided again per repo:
 
-## Licença
+**English, no exceptions** — identifiers, file names, routes, query
+parameters, database schema, code comments, commit messages, branch names.
+The one carve-out is Brazilian domain vocabulary with no useful translation
+(`pix`, `boleto`, `fatura`, `cpf`, `cnpj`, institution names): those are proper
+nouns and stay as they are, the same way `oauth` or `webhook` do.
 
-Ao contribuir, você concorda que sua contribuição será licenciada sob a
-[AGPL-3.0](LICENSE), a mesma licença do projeto.
+**Bilingual** — `README.md` and `CONTRIBUTING.md` only. English is canonical
+(it is what GitHub renders); Portuguese lives beside it as `README.pt-BR.md`
+and `CONTRIBUTING.pt-BR.md`, with a language selector at the top of each.
 
-## Código de conduta
+**English only** — `CHANGELOG.md`. Deliberately not bilingual: it changes on
+every release, and two hand-maintained copies drift within a few entries.
 
-Seja respeitoso. Críticas técnicas são bem-vindas; ataques pessoais não.
+**One language, chosen by purpose, never translated** — working notes and
+process files (`AGENTS.md`, `CLAUDE.md`, `TODO.md`, `PLANO.md`, `requests/`,
+issue and PR templates, anything under `docs/archive/`). They have no external
+reader; translating them is cost without benefit.
+
+**The language of the product's audience** — UI strings, AI prompts that ask
+for a Portuguese answer, and content that _is_ the product (RPG campaign
+material, course material). Portuguese there is the correct answer, not a
+pending translation.
+
+## License
+
+By contributing, you agree that your contribution will be licensed under the
+[AGPL-3.0](LICENSE), the same license as the project.
+
+## Code of conduct
+
+Be respectful. Technical criticism is welcome; personal attacks are not.
