@@ -19,6 +19,7 @@ func init() {
 		tuiui.Action{ID: "help", Help: "keybindings", Keys: []string{"?"}},
 		tuiui.Action{ID: "settings", Help: "rebind keys", Keys: []string{","}},
 		tuiui.Action{ID: "refresh", Help: "recarregar", Keys: []string{"r"}},
+		tuiui.Action{ID: "reload", Help: "recarregar config", Keys: []string{"f5"}},
 		tuiui.Action{ID: "filter", Help: "filtro", Keys: []string{"/"}},
 		tuiui.Action{ID: "move-down", Help: "próxima", Keys: []string{"j", "down"}, Label: "j"},
 		tuiui.Action{ID: "move-up", Help: "anterior", Keys: []string{"k", "up"}, Label: "k"},

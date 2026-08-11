@@ -486,6 +486,20 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, resolve("refresh")):
 		nm, c := m.setStatus("recarregado", true)
 		return nm, tea.Batch(c, m.loadJobs)
+	case key.Matches(msg, resolve("reload")):
+		// Config-file-first: an external edit to keybindings.json takes effect
+		// here, without restarting.
+		changed, err := reg.Reload()
+		switch {
+		case err != nil:
+			nm, c := m.setStatus("keybindings: "+err.Error(), true)
+			return nm, c
+		case changed:
+			nm, c := m.setStatus("keybindings recarregadas", true)
+			return nm, c
+		}
+		nm, c := m.setStatus("config sem mudanças", true)
+		return nm, c
 	case key.Matches(msg, resolve("notify")):
 		if _, ok := m.focusedJob(); ok {
 			return m, m.runNotify
