@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // llmScorer implements Scorer by calling an OpenAI-compatible chat completions
@@ -23,13 +22,14 @@ type llmScorer struct {
 	store   *Store
 }
 
+// newLLMScorer takes the provider settings from config.toml. The env vars
+// that used to be the only knob still win over the file,
+// and the API key stays env-only — it never belongs in a config file.
 func newLLMScorer(apiKey string, opts scoreOptions, store *Store) Scorer {
-	baseURL := envOr("TABELAVAGAS_LLM_BASEURL", "https://api.deepseek.com/v1")
-	model := envOr("TABELAVAGAS_LLM_MODEL", "deepseek-chat")
 	return &llmScorer{
 		apiKey:  apiKey,
-		baseURL: baseURL,
-		model:   model,
+		baseURL: llmBaseURL(),
+		model:   llmModel(),
 		opts:    opts,
 		store:   store,
 	}
@@ -79,8 +79,8 @@ func (l *llmScorer) callLLM(j Job) (int, error) {
 				"content": prompt,
 			},
 		},
-		"temperature": 0.1,
-		"max_tokens":  100,
+		"temperature": settings.LLM.Temperature,
+		"max_tokens":  settings.LLM.MaxTokens,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -96,7 +96,7 @@ func (l *llmScorer) callLLM(j Job) (int, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+l.apiKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := newHTTPClient(settings.LLM.HTTPTimeout.Duration)
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err

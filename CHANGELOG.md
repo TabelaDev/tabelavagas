@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Adicionado
+
+- `~/.config/tabelavagas/config.toml` (opcional): perfil padrão, path do
+  banco, provider/modelo/limites do LLM, timeouts e delays dos coletores,
+  layout da TUI e os parâmetros de notificação. Só as chaves presentes
+  sobrescrevem. `profiles.toml` e `sources.toml` seguem separados — são
+  catálogos, não preferências.
+- Tecla `f5`: recarrega config.toml e keybindings sem reiniciar.
+
+Env continua vencendo o arquivo (`TABELAVAGAS_DB`, `_PROFILE`,
+`_LLM_BASEURL`, `_LLM_MODEL`), resolvida no ponto de uso.
+`TABELAVAGAS_LLM_API_KEY` é env-only: segredo não ganha chave de config.
+
 ### Corrigido
+
+- A sidebar de perfis despachava teclas por literal cru, ignorando o
+  KeyRegistry — quem remapeava uma tecla era atendido em todo lugar menos ali.
+- `notify` tinha três "5" independentes pro mesmo conceito (`notifyCount` e
+  duas vezes dentro do `runNotify`); todos leem `[notify].count` agora.
+- README documentava `TABELAVAGAS_SCORER=llm`, que nenhum código jamais leu —
+  o seletor sempre foi só a flag `--scorer`.
 
 - **Score heurístico:** o casamento de keyword era `strings.Contains`, sem
   fronteira de palavra, e o perfil `dev` tem entradas curtas — `"ia"` casava com

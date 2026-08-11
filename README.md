@@ -142,27 +142,72 @@ bônus remoto, estágio, júnior e cidade. Cutoff varia por perfil.
 
 ### BYOK LLM
 
-Use `--scorer llm` ou `TABELAVAGAS_SCORER=llm` pra pontuar com LLM
-(OpenAI-compatível, default DeepSeek). Só chama a API pra vagas novas
-(.cache por hash do conteúdo).
+Use `--scorer llm` pra pontuar com LLM (OpenAI-compatível, default DeepSeek).
+Só chama a API pra vagas novas (cache por hash do conteúdo).
 
-Env LLM:
+A chave fica **só** em `TABELAVAGAS_LLM_API_KEY` — segredo não vai pra arquivo
+de config. Provider, modelo e limites ficam em `[llm]` no `config.toml`
+(veja [Configuração](#configuração)), com `TABELAVAGAS_LLM_BASEURL` e
+`TABELAVAGAS_LLM_MODEL` ainda vencendo o arquivo.
 
-| Var                        | Padrão                          |
-| -------------------------- | ------------------------------- |
-| `TABELAVAGAS_LLM_API_KEY`  | — (obrigatório pro LLM)        |
-| `TABELAVAGAS_LLM_BASEURL`  | `https://api.deepseek.com/v1`  |
-| `TABELAVAGAS_LLM_MODEL`    | `deepseek-chat`                 |
+## Configuração
 
-## Env
+Opcional, em `~/.config/tabelavagas/config.toml`. Sem o arquivo o app roda nos
+defaults abaixo; com ele, só as chaves presentes são sobrescritas. `f5`
+recarrega sem reiniciar.
 
-| Var                          | Padrão                                              |
+```toml
+default_profile = "dev"
+
+[database]
+path = "~/.local/state/tabelavagas/vagas.db"
+
+[llm]
+base_url    = "https://api.deepseek.com/v1"
+model       = "deepseek-chat"
+temperature = 0.1
+max_tokens  = 100
+workers     = 6      # tamanho do pool de scoring
+http_timeout = "30s"
+
+[collector]
+http_timeout           = "30s"
+greenhouse_delay       = "500ms"
+programathor_max_pages = 20
+programathor_delay     = "400ms"
+
+[layout]
+sidebar_width = 22
+card_height   = 4
+detail_min    = 32
+detail_max    = 64
+
+[notify]
+binary     = "dms"
+timeout_ms = 8000
+app_name   = "tabelavagas"
+count      = 5       # quantas vagas a notificação leva sem N explícito
+```
+
+`profiles.toml` e `sources.toml` continuam arquivos próprios — são catálogos
+(o que um perfil pontua, quais empresas raspar), não preferências. O
+`config.toml` só aponta o perfil padrão pelo nome.
+
+Nem tudo é recarregável a quente: `[database].path` é lido só no boot, e
+`[llm].workers` vale a partir da próxima rodada de scoring.
+
+### Env
+
+Env vence o arquivo, que vence o default. A chave da API é env-only — segredo
+não entra em arquivo de config.
+
+| Var                          | Sobrescreve                                         |
 | ---------------------------- | --------------------------------------------------- |
-| `TABELAVAGAS_DB`             | `~/.local/state/tabelavagas/vagas.db`               |
-| `TABELAVAGAS_PROFILE`        | perfil padrão (override de `--profile`)             |
-| `TABELAVAGAS_LLM_API_KEY`    | chave API OpenAI-compatível (DeepSeek etc.)         |
-| `TABELAVAGAS_LLM_BASEURL`    | base URL do provider LLM                             |
-| `TABELAVAGAS_LLM_MODEL`      | modelo LLM                                           |
+| `TABELAVAGAS_LLM_API_KEY`    | — (env-only, obrigatória pro `--scorer llm`)        |
+| `TABELAVAGAS_DB`             | `[database].path`                                   |
+| `TABELAVAGAS_PROFILE`        | `default_profile` (e `--profile` vence os dois)     |
+| `TABELAVAGAS_LLM_BASEURL`    | `[llm].base_url`                                    |
+| `TABELAVAGAS_LLM_MODEL`      | `[llm].model`                                       |
 
 ## Timer diário
 

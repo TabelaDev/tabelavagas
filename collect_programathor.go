@@ -16,17 +16,14 @@ type programathorCollector struct{}
 func (p *programathorCollector) name() string { return "programathor" }
 func (p *programathorCollector) kind() string { return "scraping" }
 
-// maxPages caps the crawl; pageDelay keeps it from hammering the site.
-const (
-	maxPages  = 20
-	pageDelay = 400 * time.Millisecond
-)
+// The page cap and the inter-page delay (which keeps this from hammering the
+// site) come from config.toml ([collector]).
 
 func (p *programathorCollector) collect() ([]Job, error) {
 	var all []Job
-	for page := 1; page <= maxPages; page++ {
+	for page := 1; page <= settings.Collector.ProgramathorMaxPages; page++ {
 		if page > 1 {
-			time.Sleep(pageDelay)
+			time.Sleep(settings.Collector.ProgramathorDelay.Duration)
 		}
 		jobs, err := p.fetchPage(page)
 		if err != nil {

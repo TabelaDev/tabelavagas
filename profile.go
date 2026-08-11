@@ -79,13 +79,11 @@ func resolveProfile(name string) scoreOptions {
 	return builtinProfiles["dev"]
 }
 
-// defaultProfile returns the effective profile name: TABELAVAGAS_PROFILE env
-// if set, otherwise "dev".
+// defaultProfile returns the effective profile name, from config.toml's
+// default_profile — with TABELAVAGAS_PROFILE still winning over it and
+// --profile winning over both.
 func defaultProfile() string {
-	if p := os.Getenv("TABELAVAGAS_PROFILE"); p != "" {
-		return p
-	}
-	return "dev"
+	return envOr("TABELAVAGAS_PROFILE", settings.DefaultProfile)
 }
 
 // profileNames lists every available profile (built-in + custom), sorted.

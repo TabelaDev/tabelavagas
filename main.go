@@ -89,6 +89,13 @@ func parseFlags(args []string) cmdFlags {
 }
 
 func main() {
+	// Load before anything else: the DB path, the default profile and the
+	// HTTP timeouts all come from here, and parseFlags already reads the
+	// profile default below.
+	if err := loadSettings(); err != nil {
+		fmt.Fprintln(stderr(), "aviso: config.toml:", err)
+	}
+
 	args := os.Args[1:]
 	if len(args) == 0 {
 		runTUI()
@@ -254,12 +261,12 @@ func confirmApplyLLM(n int) bool {
 }
 
 // notifyCount returns how many jobs notify should deliver: the explicit N if
-// given, otherwise the default (5).
+// given, otherwise [notify].count from config.toml.
 func notifyCount(f cmdFlags) int {
 	if f.topNSet {
 		return f.topN
 	}
-	return 5
+	return settings.Notify.Count
 }
 
 // rescoreProfile re-scores every stored job using the heuristic profile.

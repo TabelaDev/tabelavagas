@@ -20,14 +20,17 @@ const (
 	gapLines      = 1
 	footerLines   = 1
 	noticeLines   = 1
-	cardH         = 4
-	detailMin     = 32
-	detailMax     = 64
-	sidebarW      = 22
 	maxLoad       = 1000
 	noticeTimeout = 3 * time.Second
 	maxLog        = 100
 )
+
+// Card height, detail-panel bounds and sidebar width come from config.toml
+// ([layout]); normalize keeps detailMin() <= detailMax().
+func cardH() int     { return settings.Layout.CardHeight }
+func detailMin() int { return settings.Layout.DetailMin }
+func detailMax() int { return settings.Layout.DetailMax }
+func sidebarW() int  { return settings.Layout.SidebarWidth }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -487,15 +490,17 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		nm, c := m.setStatus("recarregado", true)
 		return nm, tea.Batch(c, m.loadJobs)
 	case key.Matches(msg, resolve("reload")):
-		// Config-file-first: an external edit to keybindings.json takes effect
-		// here, without restarting.
-		changed, err := reg.Reload()
+		// Config-file-first: external edits to keybindings.json and config.toml
+		// take effect here, without restarting. The store is not reopened, so
+		// [database].path still needs a restart.
+		kChanged, kErr := reg.Reload()
+		cChanged, cErr := reloadSettings()
 		switch {
-		case err != nil:
-			nm, c := m.setStatus("keybindings: "+err.Error(), true)
+		case kErr != nil || cErr != nil:
+			nm, c := m.setStatus("config: "+errors.Join(kErr, cErr).Error(), true)
 			return nm, c
-		case changed:
-			nm, c := m.setStatus("keybindings recarregadas", true)
+		case kChanged || cChanged:
+			nm, c := m.setStatus("config recarregada", true)
 			return nm, c
 		}
 		nm, c := m.setStatus("config sem mudanças", true)
@@ -896,14 +901,17 @@ func (m model) llmDriver() tea.Msg {
 
 func (m model) runNotify() tea.Msg {
 	var jobs []Job
+	// One source for how many jobs a notification carries — this used to be
+	// three independent 5s (here twice, plus notifyCount in main.go).
+	limit := settings.Notify.Count
 	if m.tierView {
 		col := m.tierGroups()[m.colIdx].jobs
-		if len(col) > 5 {
-			col = col[:5]
+		if len(col) > limit {
+			col = col[:limit]
 		}
 		jobs = col
 	} else {
-		n := 5
+		n := limit
 		if m.total < n {
 			n = m.total
 		}
@@ -993,7 +1001,7 @@ func (m model) renderBody(availH, w int) string {
 	listW := w
 	if m.sidebar {
 		sidebar = m.renderSidebar(availH)
-		listW = w - sidebarW - 1
+		listW = w - sidebarW() - 1
 		if listW < 1 {
 			listW = 1
 		}
@@ -1042,7 +1050,7 @@ func (m model) renderJobsPanel(availH, w int) string {
 }
 
 func (m model) renderSidebar(availH int) string {
-	inner := sidebarW - 4
+	inner := sidebarW() - 4
 	lines := []string{"perfis"}
 	for i, name := range m.profiles {
 		line := "  " + name
@@ -1084,7 +1092,7 @@ func (m model) renderTierColumn(br bracket, idx, inner, availH int) string {
 	focused := idx == m.colIdx
 	header := fmt.Sprintf("%s (%d)", br.label, len(br.jobs))
 	lines := []string{header}
-	visible := (availH - 2) / cardH
+	visible := (availH - 2) / cardH()
 	if visible < 1 {
 		visible = 1
 	}
@@ -1227,11 +1235,11 @@ func activityBadge(kind string) string {
 
 func (m model) detailWidth(w int) int {
 	dw := w * 40 / 100
-	if dw < detailMin {
-		dw = detailMin
+	if dw < detailMin() {
+		dw = detailMin()
 	}
-	if dw > detailMax {
-		dw = detailMax
+	if dw > detailMax() {
+		dw = detailMax()
 	}
 	if dw >= w-1 {
 		dw = w - 1
@@ -1252,7 +1260,7 @@ func (m model) renderJobs(availH, w int) string {
 		}
 		return padToHeight(" nenhuma vaga nova. pressione c para coletar", availH)
 	}
-	visible := availH / cardH
+	visible := availH / cardH()
 	if visible < 1 {
 		visible = 1
 	}

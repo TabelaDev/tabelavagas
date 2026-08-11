@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ianptkcs/tabelatuiui"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,11 +17,10 @@ type Store struct {
 	db *sql.DB
 }
 
+// defaultDBPath comes from config.toml, with TABELAVAGAS_DB still winning
+// over the file.
 func defaultDBPath() string {
-	if p := os.Getenv("TABELAVAGAS_DB"); p != "" {
-		return p
-	}
-	return filepath.Join(os.Getenv("HOME"), ".local", "state", "tabelavagas", "vagas.db")
+	return tuiui.ExpandHome(envOr("TABELAVAGAS_DB", settings.Database.Path))
 }
 
 func openStore() (*Store, error) {
@@ -298,11 +298,12 @@ func scoreAllLLM(s *Store, sc Scorer) ([]Job, error) {
 	return scoreAllLLMProgress(s, sc, nil)
 }
 
-// llmScoreWorkers bounds the fan-out of LLM scoring. Each Score is an HTTP
-// round trip with a 30s timeout, so scoring a few hundred stored jobs strictly
+// llmScoreWorkers bounds the fan-out of LLM scoring ([llm].workers). Each
+// Score is an HTTP round trip, so scoring a few hundred stored jobs strictly
 // one at a time was effectively unusable; a small pool keeps it quick without
-// hammering the provider.
-const llmScoreWorkers = 6
+// hammering the provider. It's read when a run starts, so a reload only
+// affects the next one.
+func llmScoreWorkers() int { return settings.LLM.Workers }
 
 // scoreAllLLMProgress is scoreAllLLM with a per-job progress callback. Jobs are
 // scored concurrently, but each result is written back to its own slice slot,
@@ -316,7 +317,7 @@ func scoreAllLLMProgress(s *Store, sc Scorer, onJob func(done, total int)) ([]Jo
 		return jobs, nil
 	}
 
-	workers := min(llmScoreWorkers, len(jobs))
+	workers := min(llmScoreWorkers(), len(jobs))
 
 	var (
 		wg      sync.WaitGroup

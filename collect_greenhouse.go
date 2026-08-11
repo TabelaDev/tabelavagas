@@ -28,7 +28,7 @@ func (g *greenhouseCollector) collect() ([]Job, error) {
 			continue
 		}
 		all = append(all, jobs...)
-		time.Sleep(500 * time.Millisecond) // polite; one request per board
+		time.Sleep(settings.Collector.GreenhouseDelay.Duration) // polite; one request per board
 	}
 	return all, nil
 }

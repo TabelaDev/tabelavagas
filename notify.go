@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -14,10 +15,10 @@ func notifyJobs(jobs []Job) {
 		return
 	}
 
-	// Check if dms is available
-	if _, err := exec.LookPath("dms"); err != nil {
+	// Check if the notifier is available
+	if _, err := exec.LookPath(settings.Notify.Binary); err != nil {
 		// Fallback: print to stdout
-		fmt.Fprintln(stdout(), "=== notify (dry-run: dms não encontrado) ===")
+		fmt.Fprintf(stdout(), "=== notify (dry-run: %s não encontrado) ===\n", settings.Notify.Binary)
 		for _, j := range jobs {
 			fmt.Fprintf(stdout(), "[%02d] %s — %s %s\n%s\n\n", j.Score, j.Title, j.Company, j.Location, j.URL)
 		}
@@ -37,15 +38,15 @@ func notifyJobs(jobs []Job) {
 	summary := fmt.Sprintf("tabelavagas — %d vagas que valem a pena", len(jobs))
 	body := strings.Join(lines, "\n\n")
 
-	// Send via dms notify
-	cmd := exec.Command("dms", "notify", summary, body,
-		"--app", "tabelavagas",
-		"--timeout", "8000",
+	// Send via the configured notifier
+	cmd := exec.Command(settings.Notify.Binary, "notify", summary, body,
+		"--app", settings.Notify.AppName,
+		"--timeout", strconv.Itoa(settings.Notify.TimeoutMS),
 	)
 	cmd.Stdout = stdout()
 	cmd.Stderr = stderr()
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(stderr(), "aviso: dms notify falhou: %v\n", err)
+		fmt.Fprintf(stderr(), "aviso: %s notify falhou: %v\n", settings.Notify.Binary, err)
 		// Fallback to stdout
 		fmt.Fprintln(stdout(), "=== notify (fallback) ===")
 		for _, j := range jobs {

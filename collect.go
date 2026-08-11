@@ -63,7 +63,14 @@ func captureOutput() func() string {
 // ("Go-http-client/1.1") is blocked by a good share of job boards.
 const userAgent = "tabelavagas/0.3 (+https://github.com/TabelaDev/tabelavagas)"
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+// httpClient is built at init with the default timeout, because package vars
+// are evaluated before main can read config.toml; loadSettings swaps in the
+// configured one through apply().
+var httpClient = newHTTPClient(defaultConfig().Collector.HTTPTimeout.Duration)
+
+func newHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout}
+}
 
 func clientGet(rawURL string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
