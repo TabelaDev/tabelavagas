@@ -519,31 +519,34 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleSidebarKey drives the profile sidebar. It dispatches through the
+// registry like every other mode, so a rebind applies here too — "esc" is the
+// one raw key left, since closing a panel isn't a registered action.
 func (m model) handleSidebarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
+	switch {
+	case key.Matches(msg, resolve("quit")):
 		return m, tea.Quit
-	case "?":
+	case key.Matches(msg, resolve("help")):
 		m.helpModal.Toggle()
 		return m, nil
-	case ",":
+	case key.Matches(msg, resolve("settings")):
 		m.settingsModal.Toggle()
 		return m, nil
-	case "ctrl+e", "esc", "l", "right":
+	case key.Matches(msg, resolve("sidebar")), key.Matches(msg, resolve("move-right")), msg.String() == "esc":
 		m.sidebar = false
-	case "j", "down":
+	case key.Matches(msg, resolve("move-down")):
 		if m.sidebarIdx < len(m.profiles)-1 {
 			m.sidebarIdx++
 		}
-	case "k", "up":
+	case key.Matches(msg, resolve("move-up")):
 		if m.sidebarIdx > 0 {
 			m.sidebarIdx--
 		}
-	case "g":
+	case key.Matches(msg, resolve("top")):
 		m.sidebarIdx = 0
-	case "G":
+	case key.Matches(msg, resolve("bottom")):
 		m.sidebarIdx = len(m.profiles) - 1
-	case "enter":
+	case key.Matches(msg, resolve("open")):
 		if len(m.profiles) > 0 {
 			return m, func() tea.Msg { return m.runApplyProfile(m.profiles[m.sidebarIdx]) }
 		}
