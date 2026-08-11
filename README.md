@@ -2,6 +2,8 @@
 
 # tabelavagas
 
+**English** · [Português](README.pt-BR.md)
+
 [![Go Version](https://img.shields.io/github/go-mod/go-version/TabelaDev/tabelavagas?style=flat-square&logo=go&logoColor=white&color=00ADD8)](go.mod)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Built with Bubble Tea](https://img.shields.io/badge/built%20with-Bubble%20Tea-ff69b4?style=flat-square)](https://github.com/charmbracelet/bubbletea)
@@ -13,113 +15,115 @@
 
 ---
 
-Filtra vagas de programação que podem valer a pena para o teu perfil e avisa
-só as que importam. Um monobando em Go: collect → rank → top → notify.
+Filters programming job postings that might be worth your profile and only tells
+you about the ones that matter. A Go monoband: collect → rank → top → notify.
 
 ## CLI
 
 ```
-tabelavagas                  roda TUI (padrão)
-tabelavagas sources          lista fontes e o tipo (API vs scraping)
-tabelavagas collect          baixa vagas das fontes e salva no SQLite
-tabelavagas rank [flags]     score 0-100 das vagas salvas
-tabelavagas top [N] [flags]  imprime as N melhores (default 10)
-tabelavagas notify [N]       envia top N via desktop notification (DMS)
+tabelavagas                  runs the TUI (default)
+tabelavagas sources          lists the sources and their kind (API vs scraping)
+tabelavagas collect          downloads postings from the sources into SQLite
+tabelavagas rank [flags]     scores the stored postings 0-100
+tabelavagas top [N] [flags]  prints the best N (10 by default)
+tabelavagas notify [N]       sends the top N as a desktop notification (DMS)
 tabelavagas all [flags]      collect → rank → top → notify
 ```
 
-Flags comuns:
+Common flags:
 
-| Flag          | Descrição                                       | Default |
-| ------------- | ----------------------------------------------- | ------- |
-| `--min N`     | score mínimo pra entrar no `top`/`notify`       | —       |
-| `--profile X` | perfil de scoring (`dev`, `data`, `fullstack`)  | `dev`   |
-| `--scorer X`  | `heuristic` ou `llm`                            | —       |
-| `--only-new`  | só vagas ainda não notificadas (`top`/`notify`/`all`) | —    |
-| `--dry`       | mostra o que faria sem gravar                   | —       |
+| Flag          | Description                                              | Default |
+| ------------- | -------------------------------------------------------- | ------- |
+| `--min N`     | minimum score to make `top`/`notify`                     | —       |
+| `--profile X` | scoring profile (`dev`, `data`, `fullstack`)             | `dev`   |
+| `--scorer X`  | `heuristic` or `llm`                                     | —       |
+| `--only-new`  | only postings not notified yet (`top`/`notify`/`all`)     | —       |
+| `--dry`       | shows what it would do without writing                   | —       |
 
 ## TUI
 
-`tabelavagas` abre a TUI: lista de vagas novas (ainda não notificadas), cada
-uma num card de 3 linhas (score+título, empresa/local/tipo, tags+deadline).
-A vaga focada fica com destaque full-width na cor de acento.
+`tabelavagas` opens the TUI: a list of new postings (not notified yet), each in a
+3-line card (score+title, company/location/kind, tags+deadline). The focused
+posting is highlighted full-width in the accent colour.
 
-| Tecla      | Ação                                        |
-| ---------- | ------------------------------------------- |
-| `j`/`k`    | navega (também setas, `g`/`G`, `pgup`/`pgdn`) |
-| `h`/`l`    | troca de coluna na visão de faixas (`t`)    |
-| `/`        | abre filtro live — digita e a lista reduz   |
-| `esc`      | sai do filtro (`ctrl+u` limpa)              |
-| `o`        | abre/fecha painel de detalhes               |
-| `x`        | vetar/desvetar a vaga focada (some da lista) |
-| `V`        | mostrar/esconder as vagas vetadas           |
-| `t`        | visão de faixas: colunas 80-100 · 60-79 · <60 |
-| `ctrl+e`   | abre/fecha sidebar de perfis (aplica e re-scoreia) |
-| `L`        | log de atividade (collect/veto/notify/perfil) — últimos 7 dias |
-| `enter`    | abre a vaga no navegador                    |
-| `c`        | coleta com spinner + progresso por fonte e re-scoreia |
-| `n`        | notifica as top 5 via DMS                    |
-| `r`        | recarrega do SQLite                         |
-| `q`        | sai                                        |
+| Key        | Action                                                          |
+| ---------- | --------------------------------------------------------------- |
+| `j`/`k`    | navigate (also arrows, `g`/`G`, `pgup`/`pgdn`)                  |
+| `h`/`l`    | change column in the band view (`t`)                            |
+| `/`        | opens the live filter — type and the list narrows               |
+| `esc`      | leaves the filter (`ctrl+u` clears it)                          |
+| `o`        | opens and closes the details panel                              |
+| `x`        | veto/un-veto the focused posting (it leaves the list)           |
+| `V`        | show/hide the vetoed postings                                   |
+| `t`        | band view: columns 80-100 · 60-79 · <60                         |
+| `ctrl+e`   | opens and closes the profiles sidebar (applies and re-scores)   |
+| `L`        | activity log (collect/veto/notify/profile) — last 7 days        |
+| `enter`    | opens the posting in the browser                                |
+| `c`        | collects with a spinner and per-source progress, then re-scores |
+| `n`        | notifies the top 5 through DMS                                  |
+| `r`        | reloads from SQLite                                             |
+| `q`        | quits                                                           |
 
-A linha entre o corpo e o footer é a barra de status: feedback transitório
-(collect, veto, reload) que some sozinho depois de 3s. Vagas vetadas não
-entram no `top`/`notify` do CLI e ficam marcadas com `✕` quando visíveis.
+The line between the body and the footer is the status bar: transient feedback
+(collect, veto, reload) that disappears on its own after 3s. Vetoed postings do
+not make the CLI's `top`/`notify` and are marked with `✕` when visible.
 
-Filtro: tokens separados por espaço, todos combinam (AND). `remote`/`onsite`
-(modo de trabalho), `score:70` (mínimo), `src:remotive` (fonte), `tipo:junior`
-(nível/contrato), e qualquer palavra é busca por substring no título/empresa/
-tags. Ex: `python remote score:60`.
+Filter: space-separated tokens, all of which must match (AND). `remote`/`onsite`
+(work mode), `score:70` (minimum), `src:remotive` (source), `tipo:junior`
+(level/contract), and any other word is a substring search over
+title/company/tags. For example: `python remote score:60`.
 
-## Fontes: API vs scraping
+## Sources: API vs scraping
 
-Cada fonte é transparente quanto ao tipo; `tabelavagas sources` mostra:
+Every source is upfront about its kind; `tabelavagas sources` shows it:
 
-| Fonte        | tipo       | como é obtida                                                     |
-| ------------ | ---------- | ----------------------------------------------------------------- |
-| remotive     | `api`      | JSON público documentado (remotive.com/api), sem auth             |
-| programathor | `scraping` | HTML server-rendered parseado via goquery                         |
-| greenhouse   | `api`      | boards-api.greenhouse.io (JSON público, sem auth) — por empresa   |
+| Source       | kind       | how it is obtained                                                 |
+| ------------ | ---------- | ------------------------------------------------------------------ |
+| remotive     | `api`      | documented public JSON (remotive.com/api), no auth                 |
+| programathor | `scraping` | server-rendered HTML parsed with goquery                           |
+| greenhouse   | `api`      | boards-api.greenhouse.io (public JSON, no auth) — per company      |
 
-- **api**: dado estruturado de endpoint oficial. Quebra = fornecedor mudou o contrato.
-- **scraping**: parse de HTML/server-rendered — pode quebrar quando o site muda.
-  Por isso são *best-effort*: fonte ruim vira aviso no stderr e não derruba a coleta.
+- **api**: structured data from an official endpoint. A break means the vendor
+  changed the contract.
+- **scraping**: parsing server-rendered HTML — it can break when the site changes.
+  That is why they are _best-effort_: a bad source becomes a warning on stderr and
+  does not bring the collection down.
 
-### Fontes por empresa (Greenhouse)
+### Per-company sources (Greenhouse)
 
-`greenhouse` é por-empresa: crie `~/.config/tabelavagas/sources.toml` com as
-empresas que usam o Greenhouse (sem auth, públicas):
+`greenhouse` is per company: create `~/.config/tabelavagas/sources.toml` with the
+companies that use Greenhouse (public, no auth):
 
 ```toml
 [greenhouse]
 companies = ["gitlab", "vercel", "stripe", "airtable"]
 ```
 
-Sem o arquivo (ou sem a seção), a fonte não roda. O dedup é por
-`greenhouse:<empresa>-<id>`, então empresas diferentes não colidem.
+Without the file (or without the section) the source does not run. Dedup is keyed
+on `greenhouse:<company>-<id>`, so different companies never collide.
 
-## Como instalar
+## Installing
 
 ```bash
 go install github.com/TabelaDev/tabelavagas@latest
 ```
 
-DB vai para `~/.local/state/tabelavagas/vagas.db` (SQLite, driver puro Go).
+The DB goes to `~/.local/state/tabelavagas/vagas.db` (SQLite, pure Go driver).
 
-## Perfis
+## Profiles
 
-Cada perfil define keywords, bônus e cutoff pra decidir se uma vaga "vale a pena".
-Perfis built-in:
+Each profile defines keywords, bonuses and a cutoff to decide whether a posting is
+"worth it". Built-in profiles:
 
-| Perfil      | MinScore | Keywords foco                                          |
+| Profile     | MinScore | Focus keywords                                         |
 | ----------- | -------- | ------------------------------------------------------ |
 | `dev`       | 70       | python, svelte, typescript, go, backend, fullstack, ml |
 | `data`      | 65       | dados, data science, ml, ia, python, matemática        |
 | `fullstack` | 60       | fullstack, frontend, react, next, vue, node, js        |
 
-### Perfis customizados
+### Custom profiles
 
-Crie `~/.config/tabelavagas/profiles.toml`:
+Create `~/.config/tabelavagas/profiles.toml`:
 
 ```toml
 [profiles.meuperfil]
@@ -131,30 +135,31 @@ city_bonus = 8
 city = ["belo horizonte", "bh"]
 ```
 
-Perfis custom sobrescrevem built-ins com o mesmo nome.
+Custom profiles override built-ins of the same name.
 
-Precedência: flag `--profile` > env `TABELAVAGAS_PROFILE` > config file > default (`dev`).
+Precedence: the `--profile` flag > the `TABELAVAGAS_PROFILE` env var > the config
+file > the default (`dev`).
 
-## Score heurístico
+## Heuristic score
 
-Base 20 + hits de keywords do perfil (capped em 8 × 6 = 48 pontos) +
-bônus remoto, estágio, júnior e cidade. Cutoff varia por perfil.
+A base of 20 + hits on the profile's keywords (capped at 8 × 6 = 48 points) +
+bonuses for remote, internship, junior and city. The cutoff varies per profile.
 
 ### BYOK LLM
 
-Use `--scorer llm` pra pontuar com LLM (OpenAI-compatível, default DeepSeek).
-Só chama a API pra vagas novas (cache por hash do conteúdo).
+Use `--scorer llm` to score with an LLM (OpenAI-compatible, DeepSeek by default).
+The API is only called for new postings (cached by a hash of the content).
 
-A chave fica **só** em `TABELAVAGAS_LLM_API_KEY` — segredo não vai pra arquivo
-de config. Provider, modelo e limites ficam em `[llm]` no `config.toml`
-(veja [Configuração](#configuração)), com `TABELAVAGAS_LLM_BASEURL` e
-`TABELAVAGAS_LLM_MODEL` ainda vencendo o arquivo.
+The key lives **only** in `TABELAVAGAS_LLM_API_KEY` — a secret does not go into a
+config file. Provider, model and limits live under `[llm]` in `config.toml` (see
+[Configuration](#configuration)), with `TABELAVAGAS_LLM_BASEURL` and
+`TABELAVAGAS_LLM_MODEL` still winning over the file.
 
-## Configuração
+## Configuration
 
-Opcional, em `~/.config/tabelavagas/config.toml`. Sem o arquivo o app roda nos
-defaults abaixo; com ele, só as chaves presentes são sobrescritas. `f5`
-recarrega sem reiniciar.
+Optional, at `~/.config/tabelavagas/config.toml`. Without the file the app runs on
+the defaults below; with it, only the keys present are overridden. `f5` reloads
+without restarting.
 
 ```toml
 default_profile = "dev"
@@ -167,7 +172,7 @@ base_url    = "https://api.deepseek.com/v1"
 model       = "deepseek-chat"
 temperature = 0.1
 max_tokens  = 100
-workers     = 6      # tamanho do pool de scoring
+workers     = 6      # size of the scoring pool
 http_timeout = "30s"
 
 [collector]
@@ -186,36 +191,36 @@ detail_max    = 64
 binary     = "dms"
 timeout_ms = 8000
 app_name   = "tabelavagas"
-count      = 5       # quantas vagas a notificação leva sem N explícito
+count      = 5       # how many postings the notification carries without an explicit N
 ```
 
-`profiles.toml` e `sources.toml` continuam arquivos próprios — são catálogos
-(o que um perfil pontua, quais empresas raspar), não preferências. O
-`config.toml` só aponta o perfil padrão pelo nome.
+`profiles.toml` and `sources.toml` remain files of their own — they are catalogues
+(what a profile scores, which companies to scrape), not preferences. `config.toml`
+only names the default profile.
 
-Nem tudo é recarregável a quente: `[database].path` é lido só no boot, e
-`[llm].workers` vale a partir da próxima rodada de scoring.
+Not everything is hot-reloadable: `[database].path` is read at boot only, and
+`[llm].workers` takes effect from the next scoring run.
 
 ### Env
 
-Env vence o arquivo, que vence o default. A chave da API é env-only — segredo
-não entra em arquivo de config.
+Env wins over the file, which wins over the default. The API key is env-only — a
+secret does not go into a config file.
 
-| Var                          | Sobrescreve                                         |
-| ---------------------------- | --------------------------------------------------- |
-| `TABELAVAGAS_LLM_API_KEY`    | — (env-only, obrigatória pro `--scorer llm`)        |
-| `TABELAVAGAS_DB`             | `[database].path`                                   |
-| `TABELAVAGAS_PROFILE`        | `default_profile` (e `--profile` vence os dois)     |
-| `TABELAVAGAS_LLM_BASEURL`    | `[llm].base_url`                                    |
-| `TABELAVAGAS_LLM_MODEL`      | `[llm].model`                                       |
+| Var                          | Overrides                                            |
+| ---------------------------- | ---------------------------------------------------- |
+| `TABELAVAGAS_LLM_API_KEY`    | — (env-only, required for `--scorer llm`)            |
+| `TABELAVAGAS_DB`             | `[database].path`                                    |
+| `TABELAVAGAS_PROFILE`        | `default_profile` (and `--profile` beats both)       |
+| `TABELAVAGAS_LLM_BASEURL`    | `[llm].base_url`                                     |
+| `TABELAVAGAS_LLM_MODEL`      | `[llm].model`                                        |
 
-## Timer diário
+## Daily timer
 
-O script `install-timer.sh` instala um systemd user timer que roda
-`tabelavagas all --only-new` todo dia às 21:00 (com heurística, sem custo
-LLM). `--only-new` faz só as vagas ainda não notificadas virarem aviso — as
-já enviadas ficam marcadas no DB e não re-notificam.
-`Persistent=true` garante catch-up se a máquina estiver desligada.
+The `install-timer.sh` script installs a systemd user timer that runs
+`tabelavagas all --only-new` every day at 21:00 (heuristic, no LLM cost).
+`--only-new` means only postings not notified yet become a notification — the ones
+already sent are marked in the DB and are not re-notified. `Persistent=true`
+guarantees a catch-up if the machine was off.
 
 ```bash
 ./install-timer.sh
@@ -223,12 +228,12 @@ já enviadas ficam marcadas no DB e não re-notificam.
 
 ## Roadmap
 
-- [x] TUI Bubble Tea interativo
-- [x] `rank --min N` e perfil via flags
-- [x] Scraping HTML server-rendered pro Programathor
-- [x] Notify via DMS (desktop notification)
-- [x] Perfis nomeados (built-in + custom via TOML)
-- [x] systemd timer 21:00 (Persistent=true)
-- [x] BYOK LLM (OpenAI-compatível, DeepSeek default)
+- [x] Interactive Bubble Tea TUI
+- [x] `rank --min N` and profile through flags
+- [x] Server-rendered HTML scraping for Programathor
+- [x] Notify through DMS (desktop notification)
+- [x] Named profiles (built-in + custom through TOML)
+- [x] systemd timer at 21:00 (Persistent=true)
+- [x] BYOK LLM (OpenAI-compatible, DeepSeek by default)
 
 MIT © TabelaDev.
