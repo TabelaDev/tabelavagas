@@ -18,7 +18,7 @@ func readAll(r io.Reader) []byte {
 
 func printJobs(jobs []Job) {
 	if len(jobs) == 0 {
-		fmt.Fprintln(stdout(), "nenhuma vaga salva ainda. rode: tabelavagas collect && tabelavagas rank")
+		fmt.Fprintln(stdout(), "nenhuma vaga salva ainda. rode: tvagas collect && tvagas rank")
 		return
 	}
 	for _, j := range jobs {

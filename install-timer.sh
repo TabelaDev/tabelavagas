@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install-timer.sh — instala systemd user timer pra rodar tabelavagas all
+# install-timer.sh — instala systemd user timer pra rodar tvagas all
 # todo dia às 21:00. Persistent=true garante catch-up se a máquina estiver
 # desligada. --only-new evita re-notificar vagas já avisadas.
 
@@ -12,10 +12,10 @@ TIMER_FILE="$TIMER_DIR/${JOB_NAME}.timer"
 LOG_DIR="$HOME/.local/state/${JOB_NAME}"
 LOG_FILE="$LOG_DIR/${JOB_NAME}.log"
 
-# Check if tabelavagas is installed
-if ! command -v tabelavagas &>/dev/null; then
-    echo "erro: tabelavagas não encontrado no PATH" >&2
-    echo "instale com: go install github.com/TabelaDev/tabelavagas@latest" >&2
+# Check if tvagas is installed
+if ! command -v tvagas &>/dev/null; then
+    echo "erro: tvagas não encontrado no PATH" >&2
+    echo "instale com: go build -o ~/.local/bin/tvagas . (dentro do repo tabelavagas)" >&2
     exit 1
 fi
 
@@ -32,7 +32,7 @@ Description=tabelavagas daily collect + rank + notify
 
 [Service]
 Type=oneshot
-ExecStart=$(which tabelavagas) all --only-new
+ExecStart=$(which tvagas) all --only-new
 StandardOutput=append:${LOG_FILE}
 StandardError=append:${LOG_FILE}
 EOF

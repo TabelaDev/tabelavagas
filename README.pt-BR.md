@@ -21,13 +21,13 @@ só as que importam. Um monobando em Go: collect → rank → top → notify.
 ## CLI
 
 ```
-tabelavagas                  roda TUI (padrão)
-tabelavagas sources          lista fontes e o tipo (API vs scraping)
-tabelavagas collect          baixa vagas das fontes e salva no SQLite
-tabelavagas rank [flags]     score 0-100 das vagas salvas
-tabelavagas top [N] [flags]  imprime as N melhores (default 10)
-tabelavagas notify [N]       envia top N via desktop notification (DMS)
-tabelavagas all [flags]      collect → rank → top → notify
+tvagas                  roda TUI (padrão)
+tvagas sources          lista fontes e o tipo (API vs scraping)
+tvagas collect          baixa vagas das fontes e salva no SQLite
+tvagas rank [flags]     score 0-100 das vagas salvas
+tvagas top [N] [flags]  imprime as N melhores (default 10)
+tvagas notify [N]       envia top N via desktop notification (DMS)
+tvagas all [flags]      collect → rank → top → notify
 ```
 
 Flags comuns:
@@ -42,7 +42,7 @@ Flags comuns:
 
 ## TUI
 
-`tabelavagas` abre a TUI: lista de vagas novas (ainda não notificadas), cada
+`tvagas` abre a TUI: lista de vagas novas (ainda não notificadas), cada
 uma num card de 3 linhas (score+título, empresa/local/tipo, tags+deadline).
 A vaga focada fica com destaque full-width na cor de acento.
 
@@ -75,7 +75,7 @@ tags. Ex: `python remote score:60`.
 
 ## Fontes: API vs scraping
 
-Cada fonte é transparente quanto ao tipo; `tabelavagas sources` mostra:
+Cada fonte é transparente quanto ao tipo; `tvagas sources` mostra:
 
 | Fonte        | tipo       | como é obtida                                                     |
 | ------------ | ---------- | ----------------------------------------------------------------- |
@@ -105,6 +105,10 @@ Sem o arquivo (ou sem a seção), a fonte não roda. O dedup é por
 ```bash
 go install github.com/TabelaDev/tabelavagas@latest
 ```
+
+Isso instala o binário como `tabelavagas` (nome do módulo). Pra ter o nome curto `tvagas`
+usado no resto deste README, compile a partir do source:
+`git clone https://github.com/TabelaDev/tabelavagas.git && cd tabelavagas && go build -o tvagas .`
 
 DB vai para `~/.local/state/tabelavagas/vagas.db` (SQLite, driver puro Go).
 
@@ -214,7 +218,7 @@ não entra em arquivo de config.
 ## Timer diário
 
 O script `install-timer.sh` instala um systemd user timer que roda
-`tabelavagas all --only-new` todo dia às 21:00 (com heurística, sem custo
+`tvagas all --only-new` todo dia às 21:00 (com heurística, sem custo
 LLM). `--only-new` faz só as vagas ainda não notificadas virarem aviso — as
 já enviadas ficam marcadas no DB e não re-notificam.
 `Persistent=true` garante catch-up se a máquina estiver desligada.

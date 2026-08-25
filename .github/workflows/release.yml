@@ -37,14 +37,14 @@ jobs:
           CGO_ENABLED: 0
         run: |
           mkdir -p dist
-          BIN="tabelavagas-${{ matrix.goos }}-${{ matrix.goarch }}"
+          BIN="tvagas-${{ matrix.goos }}-${{ matrix.goarch }}"
           go build -o "dist/$BIN" .
           tar -C dist -czf "dist/$BIN.tar.gz" "$BIN"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: tabelavagas-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: tvagas-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*.tar.gz
 
   release:

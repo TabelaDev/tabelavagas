@@ -21,13 +21,13 @@ you about the ones that matter. A Go monoband: collect → rank → top → noti
 ## CLI
 
 ```
-tabelavagas                  runs the TUI (default)
-tabelavagas sources          lists the sources and their kind (API vs scraping)
-tabelavagas collect          downloads postings from the sources into SQLite
-tabelavagas rank [flags]     scores the stored postings 0-100
-tabelavagas top [N] [flags]  prints the best N (10 by default)
-tabelavagas notify [N]       sends the top N as a desktop notification (DMS)
-tabelavagas all [flags]      collect → rank → top → notify
+tvagas                  runs the TUI (default)
+tvagas sources          lists the sources and their kind (API vs scraping)
+tvagas collect          downloads postings from the sources into SQLite
+tvagas rank [flags]     scores the stored postings 0-100
+tvagas top [N] [flags]  prints the best N (10 by default)
+tvagas notify [N]       sends the top N as a desktop notification (DMS)
+tvagas all [flags]      collect → rank → top → notify
 ```
 
 Common flags:
@@ -42,7 +42,7 @@ Common flags:
 
 ## TUI
 
-`tabelavagas` opens the TUI: a list of new postings (not notified yet), each in a
+`tvagas` opens the TUI: a list of new postings (not notified yet), each in a
 3-line card (score+title, company/location/kind, tags+deadline). The focused
 posting is highlighted full-width in the accent colour.
 
@@ -75,7 +75,7 @@ title/company/tags. For example: `python remote score:60`.
 
 ## Sources: API vs scraping
 
-Every source is upfront about its kind; `tabelavagas sources` shows it:
+Every source is upfront about its kind; `tvagas sources` shows it:
 
 | Source       | kind       | how it is obtained                                                 |
 | ------------ | ---------- | ------------------------------------------------------------------ |
@@ -107,6 +107,10 @@ on `greenhouse:<company>-<id>`, so different companies never collide.
 ```bash
 go install github.com/TabelaDev/tabelavagas@latest
 ```
+
+That installs the binary as `tabelavagas` (matching the module name). To get the short
+`tvagas` name used throughout this README, build from source instead:
+`git clone https://github.com/TabelaDev/tabelavagas.git && cd tabelavagas && go build -o tvagas .`
 
 The DB goes to `~/.local/state/tabelavagas/vagas.db` (SQLite, pure Go driver).
 
@@ -217,7 +221,7 @@ secret does not go into a config file.
 ## Daily timer
 
 The `install-timer.sh` script installs a systemd user timer that runs
-`tabelavagas all --only-new` every day at 21:00 (heuristic, no LLM cost).
+`tvagas all --only-new` every day at 21:00 (heuristic, no LLM cost).
 `--only-new` means only postings not notified yet become a notification — the ones
 already sent are marked in the DB and are not re-notified. `Persistent=true`
 guarantees a catch-up if the machine was off.

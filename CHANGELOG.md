@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.2.0] - 2026-08-25
 
 ### Adicionado
 
@@ -59,6 +59,8 @@ Env continua vencendo o arquivo (`TABELAVAGAS_DB`, `_PROFILE`,
 - Scoring por LLM roda num pool de 6 workers. Cada chamada é um POST com timeout
   de 30s; em série, algumas centenas de vagas tornavam o `rank --scorer llm`
   inviável. A conexão do SQLite ficou limitada a 1 pra evitar `SQLITE_BUSY`.
+- Binário instalado renomeado de `tabelavagas` para `tvagas`. Textos de uso,
+  `install-timer.sh`, os artefatos de release e o README foram atualizados.
 
 ### Added
 - Log de atividade persistente (tabela `activity`): collect, notify, veto,

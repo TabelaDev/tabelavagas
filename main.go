@@ -12,13 +12,13 @@ import (
 const usage = `tabelavagas — filtra vagas que valem a pena para o teu perfil.
 
 Uso:
-  tabelavagas                  roda TUI (padrão)
-  tabelavagas collect          baixa vagas das fontes e salva no SQLite
-  tabelavagas sources          lista fontes e o tipo (API vs scraping)
-  tabelavagas rank [flags]     score 0-100 das vagas salvas
-  tabelavagas top [N] [flags]  imprime as N melhores (default 10)
-  tabelavagas notify [N]       envia top N via desktop notification (DMS)
-  tabelavagas all [flags]      collect → rank → top → notify
+  tvagas                  roda TUI (padrão)
+  tvagas collect          baixa vagas das fontes e salva no SQLite
+  tvagas sources          lista fontes e o tipo (API vs scraping)
+  tvagas rank [flags]     score 0-100 das vagas salvas
+  tvagas top [N] [flags]  imprime as N melhores (default 10)
+  tvagas notify [N]       envia top N via desktop notification (DMS)
+  tvagas all [flags]      collect → rank → top → notify
 
 Flags comuns:
   --min N         score mínimo pra entrar no top/notify
@@ -222,7 +222,7 @@ func runRank(f cmdFlags) error {
 			fmt.Fprintf(stdout(), "  ... e mais %d\n", len(jobs)-20)
 		}
 		if f.scorer == "llm" {
-			fmt.Fprintln(stdout(), "scores LLM ficaram em cache. rode `tabelavagas rank --scorer llm` pra aplicar (pede confirmação).")
+			fmt.Fprintln(stdout(), "scores LLM ficaram em cache. rode `tvagas rank --scorer llm` pra aplicar (pede confirmação).")
 		}
 		return nil
 	}
