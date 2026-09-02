@@ -3,11 +3,11 @@ package main
 import (
 	"time"
 
-	"github.com/ianptkcs/tabelatuiui"
+	"github.com/TAbelhaDev/tabelhatuiui"
 )
 
-// config is tabelavagas' settings schema, read from
-// ~/.config/tabelavagas/config.toml. Every field falls back to defaultConfig
+// config is tabelhavagas' settings schema, read from
+// ~/.config/tabelhavagas/config.toml. Every field falls back to defaultConfig
 // when the file leaves it out.
 //
 // profiles.toml and sources.toml stay separate files: those are catalogs
@@ -17,7 +17,7 @@ import (
 // Environment variables still win over the file, resolved at the point of use
 // (see llmBaseURL/llmModel, defaultProfile, defaultDBPath). That keeps the
 // one-off override flow working exactly as before, and keeps the secret
-// (TABELAVAGAS_LLM_API_KEY) env-only — it never gets a config key.
+// (TABELHAVAGAS_LLM_API_KEY) env-only — it never gets a config key.
 type config struct {
 	DefaultProfile string          `toml:"default_profile"`
 	Database       databaseConfig  `toml:"database"`
@@ -85,7 +85,7 @@ func (d *duration) UnmarshalText(text []byte) error {
 func defaultConfig() config {
 	return config{
 		DefaultProfile: "dev",
-		Database:       databaseConfig{Path: "~/.local/state/tabelavagas/vagas.db"},
+		Database:       databaseConfig{Path: "~/.local/state/tabelhavagas/vagas.db"},
 		LLM: llmConfig{
 			BaseURL:     "https://api.deepseek.com/v1",
 			Model:       "deepseek-chat",
@@ -109,7 +109,7 @@ func defaultConfig() config {
 		Notify: notifyConfig{
 			Binary:    "dms",
 			TimeoutMS: 8000,
-			AppName:   "tabelavagas",
+			AppName:   "tabelhavagas",
 			Count:     5,
 		},
 	}
@@ -117,7 +117,7 @@ func defaultConfig() config {
 
 // configPath is resolved lazily, not in a package-level var: an init-time var
 // would freeze XDG_CONFIG_HOME before main (or a test) could set it.
-func configPath() string { return tuiui.ConfigPath("tabelavagas", "config.toml") }
+func configPath() string { return tuiui.ConfigPath("tabelhavagas", "config.toml") }
 
 var cfg *tuiui.Config[config]
 
@@ -127,10 +127,10 @@ var settings = defaultConfig()
 // Env overrides are resolved at the point of use, not folded into `settings`
 // at load time: precedence is env > config.toml > default, and reading the
 // variable when the value is actually needed keeps it live regardless of when
-// it was set. TABELAVAGAS_LLM_API_KEY is deliberately absent — a secret has
+// it was set. TABELHAVAGAS_LLM_API_KEY is deliberately absent — a secret has
 // no config key, it stays env-only.
-func llmBaseURL() string { return envOr("TABELAVAGAS_LLM_BASEURL", settings.LLM.BaseURL) }
-func llmModel() string   { return envOr("TABELAVAGAS_LLM_MODEL", settings.LLM.Model) }
+func llmBaseURL() string { return envOr("TABELHAVAGAS_LLM_BASEURL", settings.LLM.BaseURL) }
+func llmModel() string   { return envOr("TABELHAVAGAS_LLM_MODEL", settings.LLM.Model) }
 
 // normalize clamps values the app cannot run on: a zero worker count would
 // stall LLM scoring, and a detail panel with min > max has no valid width.

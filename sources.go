@@ -9,7 +9,7 @@ import (
 )
 
 // sourcesConfig mirrors the per-provider company lists in
-// ~/.config/tabelavagas/sources.toml.
+// ~/.config/tabelhavagas/sources.toml.
 type sourcesConfig struct {
 	Greenhouse sourceGroup `toml:"greenhouse"`
 }
@@ -25,7 +25,7 @@ func defaultSourcesPath() string {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	return filepath.Join(base, "tabelavagas", "sources.toml")
+	return filepath.Join(base, "tabelhavagas", "sources.toml")
 }
 
 // loadCompanies returns the configured company list for an API provider

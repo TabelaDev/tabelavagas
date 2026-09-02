@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ianptkcs/tabelatuiui"
+	"github.com/TAbelhaDev/tabelhatuiui"
 )
 
 const (
@@ -510,8 +510,8 @@ func (m model) handleBodyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.runNotify
 		}
 	case key.Matches(msg, resolve("llm")):
-		if os.Getenv("TABELAVAGAS_LLM_API_KEY") == "" {
-			return m.setStatus("chave LLM não definida (TABELAVAGAS_LLM_API_KEY)", false)
+		if os.Getenv("TABELHAVAGAS_LLM_API_KEY") == "" {
+			return m.setStatus("chave LLM não definida (TABELHAVAGAS_LLM_API_KEY)", false)
 		}
 		m.mode = modeLLM
 		m.spinner = 0
@@ -952,7 +952,7 @@ func (m model) View() string {
 		return "carregando..."
 	}
 	w := m.width
-	header := theme.Header(w).Render("tabelavagas")
+	header := theme.Header(w).Render("tabelhavagas")
 
 	availH := m.height - headerLines - gapLines - footerLines - noticeLines
 	if availH < 1 {
@@ -1287,7 +1287,7 @@ func (m model) renderCard(i, w int) string {
 
 // renderCardJob draws one 3-line job block: score+title, meta line (company ·
 // location · type · remoto), tags+deadline. The focused card gets a solid
-// full-width accent rectangle (like tabelakanban's selected cards); unselected
+// full-width accent rectangle (like tabelhakanban's selected cards); unselected
 // cards use plain background so colored score badges survive the ANSI stack.
 func (m model) renderCardJob(j Job, sel bool, w int) string {
 	title := j.Title

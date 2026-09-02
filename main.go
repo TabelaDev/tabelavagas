@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const usage = `tabelavagas — filtra vagas que valem a pena para o teu perfil.
+const usage = `tabelhavagas — filtra vagas que valem a pena para o teu perfil.
 
 Uso:
   tvagas                  roda TUI (padrão)
@@ -28,14 +28,14 @@ Flags comuns:
   --dry           mostra o que faria sem gravar
 
 Perfis built-in: dev, data, fullstack.
-Customize em ~/.config/tabelavagas/profiles.toml (veja README).
+Customize em ~/.config/tabelhavagas/profiles.toml (veja README).
 
 Env:
-  TABELAVAGAS_DB             path do SQLite (default ~/.local/state/tabelavagas/vagas.db)
-  TABELAVAGAS_PROFILE        perfil padrão (override de --profile)
-  TABELAVAGAS_LLM_API_KEY    chave API OpenAI-compatível (DeepSeek etc.)
-  TABELAVAGAS_LLM_BASEURL    base URL do provider LLM (default: api.deepseek.com/v1)
-  TABELAVAGAS_LLM_MODEL      modelo LLM (default: deepseek-chat)
+  TABELHAVAGAS_DB             path do SQLite (default ~/.local/state/tabelhavagas/vagas.db)
+  TABELHAVAGAS_PROFILE        perfil padrão (override de --profile)
+  TABELHAVAGAS_LLM_API_KEY    chave API OpenAI-compatível (DeepSeek etc.)
+  TABELHAVAGAS_LLM_BASEURL    base URL do provider LLM (default: api.deepseek.com/v1)
+  TABELHAVAGAS_LLM_MODEL      modelo LLM (default: deepseek-chat)
 `
 
 // cmdFlags holds parsed CLI flags shared by several subcommands.
@@ -160,7 +160,7 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "tabela: erro:", err)
+	fmt.Fprintln(os.Stderr, "tabelha: erro:", err)
 	os.Exit(1)
 }
 
@@ -173,10 +173,10 @@ func buildScorer(f cmdFlags, store *Store) Scorer {
 	if f.scorer == "llm" {
 		// LLM scorer is implemented in llm.go; falls back to heuristic
 		// if no API key is configured.
-		if key := os.Getenv("TABELAVAGAS_LLM_API_KEY"); key != "" {
+		if key := os.Getenv("TABELHAVAGAS_LLM_API_KEY"); key != "" {
 			return newLLMScorer(key, profile, store)
 		}
-		fmt.Fprintln(os.Stderr, "aviso: TABELAVAGAS_LLM_API_KEY não definida; usando heurística")
+		fmt.Fprintln(os.Stderr, "aviso: TABELHAVAGAS_LLM_API_KEY não definida; usando heurística")
 	}
 	return &heuristicScorer{opts: profile}
 }

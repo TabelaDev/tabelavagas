@@ -4,14 +4,14 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/ianptkcs/tabelatuiui"
+	"github.com/TAbelhaDev/tabelhatuiui"
 )
 
-// reg is tabelavagas' single source of truth for keybindings: defaults
-// registered below, overrides persisted to ~/.config/tabelavagas/keybindings.json.
+// reg is tabelhavagas' single source of truth for keybindings: defaults
+// registered below, overrides persisted to ~/.config/tabelhavagas/keybindings.json.
 // Resolve() returns the effective binding, shared by dispatch, footer and
 // help modal — a user rebind via the settings modal applies to all at once.
-var reg = tuiui.NewKeyRegistry(filepath.Join(tuiui.ConfigDir(), "tabelavagas", "keybindings.json"))
+var reg = tuiui.NewKeyRegistry(filepath.Join(tuiui.ConfigDir(), "tabelhavagas", "keybindings.json"))
 
 func init() {
 	reg.RegisterMany(

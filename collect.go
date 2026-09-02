@@ -61,7 +61,7 @@ func captureOutput() func() string {
 
 // userAgent identifies the collector to the sites it scrapes. Go's default
 // ("Go-http-client/1.1") is blocked by a good share of job boards.
-const userAgent = "tabelavagas/0.3 (+https://github.com/TabelaDev/tabelavagas)"
+const userAgent = "tabelhavagas/0.3 (+https://github.com/TAbelhaDev/tabelhavagas)"
 
 // httpClient is built at init with the default timeout, because package vars
 // are evaluated before main can read config.toml; loadSettings swaps in the
@@ -141,7 +141,7 @@ func allCollectors() []collector {
 		&remotiveCollector{},
 		&programathorCollector{},
 	}
-	// Per-company API boards are opt-in via ~/.config/tabelavagas/sources.toml.
+	// Per-company API boards are opt-in via ~/.config/tabelhavagas/sources.toml.
 	if companies := loadCompanies("greenhouse"); len(companies) > 0 {
 		cols = append(cols, &greenhouseCollector{companies: companies})
 	}

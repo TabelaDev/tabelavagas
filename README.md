@@ -1,13 +1,13 @@
 <div align="center">
 
-# tabelavagas
+# tabelhavagas
 
 **English** · [Português](README.pt-BR.md)
 
-[![Go Version](https://img.shields.io/github/go-mod/go-version/TabelaDev/tabelavagas?style=flat-square&logo=go&logoColor=white&color=00ADD8)](go.mod)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/TAbelhaDev/tabelhavagas?style=flat-square&logo=go&logoColor=white&color=00ADD8)](go.mod)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Built with Bubble Tea](https://img.shields.io/badge/built%20with-Bubble%20Tea-ff69b4?style=flat-square)](https://github.com/charmbracelet/bubbletea)
-[![Powered by tabelatuiui](https://img.shields.io/badge/theme-tabelatuiui-d6b4f7?style=flat-square)](https://github.com/TabelaDev/tabelatuiui)
+[![Powered by tabelhatuiui](https://img.shields.io/badge/theme-tabelhatuiui-d6b4f7?style=flat-square)](https://github.com/TAbelhaDev/tabelhatuiui)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ianptkcs)
 
@@ -21,13 +21,13 @@ you about the ones that matter. A Go monoband: collect → rank → top → noti
 ## CLI
 
 ```
-tvagas                  runs the TUI (default)
-tvagas sources          lists the sources and their kind (API vs scraping)
-tvagas collect          downloads postings from the sources into SQLite
-tvagas rank [flags]     scores the stored postings 0-100
-tvagas top [N] [flags]  prints the best N (10 by default)
-tvagas notify [N]       sends the top N as a desktop notification (DMS)
-tvagas all [flags]      collect → rank → top → notify
+tavagas                  runs the TUI (default)
+tavagas sources          lists the sources and their kind (API vs scraping)
+tavagas collect          downloads postings from the sources into SQLite
+tavagas rank [flags]     scores the stored postings 0-100
+tavagas top [N] [flags]  prints the best N (10 by default)
+tavagas notify [N]       sends the top N as a desktop notification (DMS)
+tavagas all [flags]      collect → rank → top → notify
 ```
 
 Common flags:
@@ -42,7 +42,7 @@ Common flags:
 
 ## TUI
 
-`tvagas` opens the TUI: a list of new postings (not notified yet), each in a
+`tavagas` opens the TUI: a list of new postings (not notified yet), each in a
 3-line card (score+title, company/location/kind, tags+deadline). The focused
 posting is highlighted full-width in the accent colour.
 
@@ -75,7 +75,7 @@ title/company/tags. For example: `python remote score:60`.
 
 ## Sources: API vs scraping
 
-Every source is upfront about its kind; `tvagas sources` shows it:
+Every source is upfront about its kind; `tavagas sources` shows it:
 
 | Source       | kind       | how it is obtained                                                 |
 | ------------ | ---------- | ------------------------------------------------------------------ |
@@ -91,7 +91,7 @@ Every source is upfront about its kind; `tvagas sources` shows it:
 
 ### Per-company sources (Greenhouse)
 
-`greenhouse` is per company: create `~/.config/tabelavagas/sources.toml` with the
+`greenhouse` is per company: create `~/.config/tabelhavagas/sources.toml` with the
 companies that use Greenhouse (public, no auth):
 
 ```toml
@@ -105,14 +105,14 @@ on `greenhouse:<company>-<id>`, so different companies never collide.
 ## Installing
 
 ```bash
-go install github.com/TabelaDev/tabelavagas@latest
+go install github.com/TAbelhaDev/tabelhavagas@latest
 ```
 
-That installs the binary as `tabelavagas` (matching the module name). To get the short
-`tvagas` name used throughout this README, build from source instead:
-`git clone https://github.com/TabelaDev/tabelavagas.git && cd tabelavagas && go build -o tvagas .`
+That installs the binary as `tabelhavagas` (matching the module name). To get the short
+`tavagas` name used throughout this README, build from source instead:
+`git clone https://github.com/TAbelhaDev/tabelhavagas.git && cd tabelhavagas && go build -o tavagas .`
 
-The DB goes to `~/.local/state/tabelavagas/vagas.db` (SQLite, pure Go driver).
+The DB goes to `~/.local/state/tabelhavagas/vagas.db` (SQLite, pure Go driver).
 
 ## Profiles
 
@@ -127,7 +127,7 @@ Each profile defines keywords, bonuses and a cutoff to decide whether a posting 
 
 ### Custom profiles
 
-Create `~/.config/tabelavagas/profiles.toml`:
+Create `~/.config/tabelhavagas/profiles.toml`:
 
 ```toml
 [profiles.meuperfil]
@@ -141,7 +141,7 @@ city = ["belo horizonte", "bh"]
 
 Custom profiles override built-ins of the same name.
 
-Precedence: the `--profile` flag > the `TABELAVAGAS_PROFILE` env var > the config
+Precedence: the `--profile` flag > the `TABELHAVAGAS_PROFILE` env var > the config
 file > the default (`dev`).
 
 ## Heuristic score
@@ -154,14 +154,14 @@ bonuses for remote, internship, junior and city. The cutoff varies per profile.
 Use `--scorer llm` to score with an LLM (OpenAI-compatible, DeepSeek by default).
 The API is only called for new postings (cached by a hash of the content).
 
-The key lives **only** in `TABELAVAGAS_LLM_API_KEY` — a secret does not go into a
+The key lives **only** in `TABELHAVAGAS_LLM_API_KEY` — a secret does not go into a
 config file. Provider, model and limits live under `[llm]` in `config.toml` (see
-[Configuration](#configuration)), with `TABELAVAGAS_LLM_BASEURL` and
-`TABELAVAGAS_LLM_MODEL` still winning over the file.
+[Configuration](#configuration)), with `TABELHAVAGAS_LLM_BASEURL` and
+`TABELHAVAGAS_LLM_MODEL` still winning over the file.
 
 ## Configuration
 
-Optional, at `~/.config/tabelavagas/config.toml`. Without the file the app runs on
+Optional, at `~/.config/tabelhavagas/config.toml`. Without the file the app runs on
 the defaults below; with it, only the keys present are overridden. `f5` reloads
 without restarting.
 
@@ -169,7 +169,7 @@ without restarting.
 default_profile = "dev"
 
 [database]
-path = "~/.local/state/tabelavagas/vagas.db"
+path = "~/.local/state/tabelhavagas/vagas.db"
 
 [llm]
 base_url    = "https://api.deepseek.com/v1"
@@ -194,7 +194,7 @@ detail_max    = 64
 [notify]
 binary     = "dms"
 timeout_ms = 8000
-app_name   = "tabelavagas"
+app_name   = "tabelhavagas"
 count      = 5       # how many postings the notification carries without an explicit N
 ```
 
@@ -212,16 +212,16 @@ secret does not go into a config file.
 
 | Var                          | Overrides                                            |
 | ---------------------------- | ---------------------------------------------------- |
-| `TABELAVAGAS_LLM_API_KEY`    | — (env-only, required for `--scorer llm`)            |
-| `TABELAVAGAS_DB`             | `[database].path`                                    |
-| `TABELAVAGAS_PROFILE`        | `default_profile` (and `--profile` beats both)       |
-| `TABELAVAGAS_LLM_BASEURL`    | `[llm].base_url`                                     |
-| `TABELAVAGAS_LLM_MODEL`      | `[llm].model`                                        |
+| `TABELHAVAGAS_LLM_API_KEY`    | — (env-only, required for `--scorer llm`)            |
+| `TABELHAVAGAS_DB`             | `[database].path`                                    |
+| `TABELHAVAGAS_PROFILE`        | `default_profile` (and `--profile` beats both)       |
+| `TABELHAVAGAS_LLM_BASEURL`    | `[llm].base_url`                                     |
+| `TABELHAVAGAS_LLM_MODEL`      | `[llm].model`                                        |
 
 ## Daily timer
 
 The `install-timer.sh` script installs a systemd user timer that runs
-`tvagas all --only-new` every day at 21:00 (heuristic, no LLM cost).
+`tavagas all --only-new` every day at 21:00 (heuristic, no LLM cost).
 `--only-new` means only postings not notified yet become a notification — the ones
 already sent are marked in the DB and are not re-notified. `Persistent=true`
 guarantees a catch-up if the machine was off.
@@ -240,4 +240,4 @@ guarantees a catch-up if the machine was off.
 - [x] systemd timer at 21:00 (Persistent=true)
 - [x] BYOK LLM (OpenAI-compatible, DeepSeek by default)
 
-MIT © TabelaDev.
+MIT © TAbelhaDev.

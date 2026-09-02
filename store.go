@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ianptkcs/tabelatuiui"
+	"github.com/TAbelhaDev/tabelhatuiui"
 	_ "modernc.org/sqlite"
 )
 
@@ -17,10 +17,10 @@ type Store struct {
 	db *sql.DB
 }
 
-// defaultDBPath comes from config.toml, with TABELAVAGAS_DB still winning
+// defaultDBPath comes from config.toml, with TABELHAVAGAS_DB still winning
 // over the file.
 func defaultDBPath() string {
-	return tuiui.ExpandHome(envOr("TABELAVAGAS_DB", settings.Database.Path))
+	return tuiui.ExpandHome(envOr("TABELHAVAGAS_DB", settings.Database.Path))
 }
 
 func openStore() (*Store, error) {

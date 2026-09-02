@@ -101,7 +101,7 @@ func TestExtractID(t *testing.T) {
 func writeProfiles(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := filepath.Join(dir, "tabelavagas")
+	cfg := filepath.Join(dir, "tabelhavagas")
 	if err := os.MkdirAll(cfg, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -166,11 +166,11 @@ keywords = ["elixir"]
 }
 
 func TestDefaultProfile_Env(t *testing.T) {
-	t.Setenv("TABELAVAGAS_PROFILE", "")
+	t.Setenv("TABELHAVAGAS_PROFILE", "")
 	if got := defaultProfile(); got != "dev" {
 		t.Errorf("defaultProfile() = %q, want dev", got)
 	}
-	t.Setenv("TABELAVAGAS_PROFILE", "data")
+	t.Setenv("TABELHAVAGAS_PROFILE", "data")
 	if got := defaultProfile(); got != "data" {
 		t.Errorf("defaultProfile() = %q, want data", got)
 	}
@@ -210,7 +210,7 @@ func TestNotifyCount(t *testing.T) {
 }
 
 func TestParseFlags_ProfilePrecedence(t *testing.T) {
-	t.Setenv("TABELAVAGAS_PROFILE", "data")
+	t.Setenv("TABELHAVAGAS_PROFILE", "data")
 	if got := parseFlags(nil).profile; got != "data" {
 		t.Errorf("env profile = %q, want data", got)
 	}

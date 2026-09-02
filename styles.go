@@ -2,10 +2,10 @@ package main
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ianptkcs/tabelatuiui"
+	"github.com/TAbelhaDev/tabelhatuiui"
 )
 
-// App-specific styles on top of tabelatuiui's shared chrome (called as
+// App-specific styles on top of tabelhatuiui's shared chrome (called as
 // theme.Header/Footer/Panel/Title/Dim and the semantic helpers directly).
 // Colors live in the theme resolved in theme.go.
 
@@ -23,7 +23,7 @@ func cardTitleStyle() lipgloss.Style {
 
 // selCardStyle is the full-width highlight for the focused card: the DMS
 // accent as background, base text on top — the same solid-rectangle pattern
-// tabelakanban uses for its selected cards.
+// tabelhakanban uses for its selected cards.
 func selCardStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(theme.Base).

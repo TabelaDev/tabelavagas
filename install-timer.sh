@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install-timer.sh — instala systemd user timer pra rodar tvagas all
+# install-timer.sh — instala systemd user timer pra rodar tavagas all
 # todo dia às 21:00. Persistent=true garante catch-up se a máquina estiver
 # desligada. --only-new evita re-notificar vagas já avisadas.
 
-JOB_NAME="tabelavagas"
+JOB_NAME="tabelhavagas"
 TIMER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SERVICE_FILE="$TIMER_DIR/${JOB_NAME}.service"
 TIMER_FILE="$TIMER_DIR/${JOB_NAME}.timer"
 LOG_DIR="$HOME/.local/state/${JOB_NAME}"
 LOG_FILE="$LOG_DIR/${JOB_NAME}.log"
 
-# Check if tvagas is installed
-if ! command -v tvagas &>/dev/null; then
-    echo "erro: tvagas não encontrado no PATH" >&2
-    echo "instale com: go build -o ~/.local/bin/tvagas . (dentro do repo tabelavagas)" >&2
+# Check if tavagas is installed
+if ! command -v tavagas &>/dev/null; then
+    echo "erro: tavagas não encontrado no PATH" >&2
+    echo "instale com: go build -o ~/.local/bin/tavagas . (dentro do repo tabelhavagas)" >&2
     exit 1
 fi
 
@@ -28,11 +28,11 @@ mkdir -p "$TIMER_DIR"
 # Write service unit
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=tabelavagas daily collect + rank + notify
+Description=tabelhavagas daily collect + rank + notify
 
 [Service]
 Type=oneshot
-ExecStart=$(which tvagas) all --only-new
+ExecStart=$(which tavagas) all --only-new
 StandardOutput=append:${LOG_FILE}
 StandardError=append:${LOG_FILE}
 EOF
@@ -40,7 +40,7 @@ EOF
 # Write timer unit
 cat > "$TIMER_FILE" <<EOF
 [Unit]
-Description=tabelavagas daily (21:00)
+Description=tabelhavagas daily (21:00)
 
 [Timer]
 OnCalendar=*-*-* 21:00:00

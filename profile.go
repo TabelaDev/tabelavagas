@@ -9,7 +9,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// profilesConfig mirrors the on-disk format of ~/.config/tabelavagas/profiles.toml.
+// profilesConfig mirrors the on-disk format of ~/.config/tabelhavagas/profiles.toml.
 type profilesConfig struct {
 	Profiles map[string]tomlProfile `toml:"profiles"`
 }
@@ -42,7 +42,7 @@ func defaultProfilesPath() string {
 	if base == "" {
 		base = filepath.Join(os.Getenv("HOME"), ".config")
 	}
-	return filepath.Join(base, "tabelavagas", "profiles.toml")
+	return filepath.Join(base, "tabelhavagas", "profiles.toml")
 }
 
 // loadCustomProfiles reads the user's profiles.toml and returns the custom
@@ -80,10 +80,10 @@ func resolveProfile(name string) scoreOptions {
 }
 
 // defaultProfile returns the effective profile name, from config.toml's
-// default_profile — with TABELAVAGAS_PROFILE still winning over it and
+// default_profile — with TABELHAVAGAS_PROFILE still winning over it and
 // --profile winning over both.
 func defaultProfile() string {
-	return envOr("TABELAVAGAS_PROFILE", settings.DefaultProfile)
+	return envOr("TABELHAVAGAS_PROFILE", settings.DefaultProfile)
 }
 
 // profileNames lists every available profile (built-in + custom), sorted.

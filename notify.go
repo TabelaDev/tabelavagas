@@ -35,7 +35,7 @@ func notifyJobs(jobs []Job) {
 		lines = append(lines, fmt.Sprintf("%d. %s\n   %s · %s\n   %s", j.Score, j.Title, j.Company, loc, j.URL))
 	}
 
-	summary := fmt.Sprintf("tabelavagas — %d vagas que valem a pena", len(jobs))
+	summary := fmt.Sprintf("tabelhavagas — %d vagas que valem a pena", len(jobs))
 	body := strings.Join(lines, "\n\n")
 
 	// Send via the configured notifier

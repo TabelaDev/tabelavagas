@@ -8,7 +8,7 @@ import (
 )
 
 // writeConfigFixture points XDG_CONFIG_HOME at a temp dir and writes
-// config.toml into ~/.config/tabelavagas. An empty body leaves the file out.
+// config.toml into ~/.config/tabelhavagas. An empty body leaves the file out.
 func writeConfigFixture(t *testing.T, body string) string {
 	t.Helper()
 	base := t.TempDir()
@@ -23,7 +23,7 @@ func writeConfigFixture(t *testing.T, body string) string {
 		apply()
 	})
 
-	dir := filepath.Join(base, "tabelavagas")
+	dir := filepath.Join(base, "tabelhavagas")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -91,9 +91,9 @@ func TestEnvBeatsConfigFile(t *testing.T) {
 		t.Fatalf("file values not in effect: %q %q %q", defaultProfile(), llmModel(), defaultDBPath())
 	}
 
-	t.Setenv("TABELAVAGAS_PROFILE", "do-env")
-	t.Setenv("TABELAVAGAS_LLM_MODEL", "modelo-do-env")
-	t.Setenv("TABELAVAGAS_DB", "/do/env.db")
+	t.Setenv("TABELHAVAGAS_PROFILE", "do-env")
+	t.Setenv("TABELHAVAGAS_LLM_MODEL", "modelo-do-env")
+	t.Setenv("TABELHAVAGAS_DB", "/do/env.db")
 	if got := defaultProfile(); got != "do-env" {
 		t.Fatalf("defaultProfile() = %q, want the env value", got)
 	}

@@ -9,7 +9,7 @@ import (
 
 func TestLoadCompanies_Greenhouse(t *testing.T) {
 	dir := t.TempDir()
-	cfg := filepath.Join(dir, "tabelavagas")
+	cfg := filepath.Join(dir, "tabelhavagas")
 	if err := os.MkdirAll(cfg, 0o755); err != nil {
 		t.Fatal(err)
 	}
